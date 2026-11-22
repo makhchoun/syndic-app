@@ -1,0 +1,2097 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Syndic</title>
+<script>
+var SERVEUR = "https://script.google.com/macros/s/AKfycbyi__RKASnF8TeDW7ObxW1B_UvmNceJzCCiMifSXSmUbw7mjb92Q6GpypdQVPdEW9c80A/exec";
+(function(){
+  function appel(fn, args){
+    // text/plain : requête « simple », sans cookies ni comptes Google (credentials: 'omit')
+    return fetch(SERVEUR, { method:'POST', body: JSON.stringify({ fn: fn, args: args }), headers:{ 'Content-Type':'text/plain;charset=utf-8' }, credentials:'omit', redirect:'follow' })
+      .then(function(r){ if(!r.ok) throw new Error('Erreur réseau (' + r.status + ')'); return r.json(); })
+      .then(function(o){ if(!o.ok) throw new Error(o.error || 'Erreur'); return o.result; });
+  }
+  var handler = null;
+  window.google = { script: {
+    get run(){
+      var h = { ok:null, ko:null };
+      var p = new Proxy({}, { get: function(t, name){
+        if(name === 'withSuccessHandler') return function(f){ h.ok = f; return p; };
+        if(name === 'withFailureHandler') return function(f){ h.ko = f; return p; };
+        return function(){ var args = Array.prototype.slice.call(arguments);
+          appel(name, args).then(function(r){ h.ok && h.ok(r); }, function(e){ h.ko && h.ko(e); }); };
+      }});
+      return p;
+    },
+    history: {
+      push: function(state, params){ history.pushState(state, '', qs(params)); },
+      replace: function(state, params){ history.replaceState(state, '', qs(params)); },
+      setChangeHandler: function(f){ handler = f; }
+    }
+  }};
+  function qs(params){ var u = new URLSearchParams(params || {}).toString(); return location.pathname + (u ? '?' + u : ''); }
+  window.addEventListener('popstate', function(e){ handler && handler({ state: e.state }); });
+})();
+</script>
+
+<meta charset="utf-8">
+<style>
+  :root { --bg:#f4f6f8; --card:#fff; --ink:#1b1f24; --muted:#5b6670; --pri:#0b6e4f; --pri-ink:#fff; --warn:#b54708; --bad:#b42318; --ok:#067647; --line:#d9dee3; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:18px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif; }
+  header { background:var(--pri); color:var(--pri-ink); padding:14px 16px; display:flex; align-items:center; gap:10px; position:sticky; top:0; z-index:5; }
+  header h1 { font-size:19px; margin:0; flex:1; }
+  header button { background:transparent; color:#fff; border:1px solid rgba(255,255,255,.6); border-radius:10px; padding:6px 12px; font-size:16px; }
+  main { max-width:680px; margin:0 auto; padding:16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; margin-bottom:14px; }
+  .tiles { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .tile { background:var(--card); border:2px solid var(--line); border-radius:16px; padding:18px 12px; text-align:center; font-size:18px; font-weight:600; color:var(--ink); cursor:pointer; min-height:96px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; }
+  .tile .ico { font-size:30px; }
+  .tile .badge { background:var(--bad); color:#fff; border-radius:999px; padding:1px 9px; font-size:14px; }
+  label { display:block; font-weight:600; margin:14px 0 6px; }
+  label.chk { font-weight:400; margin:10px 0; display:flex; align-items:center; gap:10px; } label.chk input { width:26px; height:26px; margin:0; flex:none; }
+  input, select, textarea { width:100%; font-size:18px; padding:12px; border:1px solid #aab4bd; border-radius:10px; background:#fff; color:var(--ink); }
+  textarea { min-height:180px; }
+  .btn { display:block; width:100%; text-align:center; border:none; border-radius:12px; padding:15px; font-size:18px; font-weight:700; margin-top:14px; cursor:pointer; text-decoration:none; }
+  .btn.pri { background:var(--pri); color:#fff; } .btn.sec { background:#e7ecef; color:var(--ink); } .btn.wa { background:#25d366; color:#06371b; } .btn.danger { background:#fde8e7; color:var(--bad); }
+  .btn.small { display:inline-block; width:auto; padding:9px 14px; font-size:16px; margin:6px 6px 0 0; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; }
+  .chip { border:1px solid var(--pri); color:var(--pri); background:#fff; border-radius:999px; padding:8px 14px; font-size:16px; cursor:pointer; }
+  .muted { color:var(--muted); font-size:15px; }
+  .big { font-size:28px; font-weight:800; }
+  .st-retard { color:var(--bad); font-weight:700; } .st-a_jour { color:var(--ok); font-weight:700; } .st-avance { color:var(--pri); font-weight:700; }
+  .ok-box { background:#e6f4ea; border:2px solid var(--ok); }
+  .err { background:#fde8e7; color:var(--bad); border-radius:10px; padding:12px; margin-top:12px; }
+  .list .item { border-top:1px solid var(--line); padding:12px 0; }
+  .list .item:first-child { border-top:none; }
+  .kpis { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .kpi { background:#f0f4f7; border-radius:12px; padding:12px; } .kpi b { display:block; font-size:22px; }
+  .pin { letter-spacing:12px; text-align:center; font-size:30px; }
+  #busy { position:fixed; inset:0; background:rgba(255,255,255,.75); display:none; align-items:center; justify-content:center; font-size:20px; z-index:10; }
+  a { color:var(--pri); }
+  /* navigation par espaces */
+  nav { position:sticky; top:52px; z-index:4; background:#fff; border-bottom:1px solid var(--line); display:flex; overflow-x:auto; }
+  nav button { flex:1 0 auto; background:none; border:none; border-bottom:4px solid transparent; padding:12px 14px; font-size:16px; font-weight:700; color:var(--muted); cursor:pointer; }
+  nav button.on { color:var(--pri); border-bottom-color:var(--pri); }
+  .space-list .rowlink { display:flex; align-items:center; gap:14px; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; margin-bottom:10px; cursor:pointer; }
+  .rowlink .ico { font-size:28px; width:36px; text-align:center; }
+  .rowlink b { display:block; font-size:18px; } .rowlink span.muted { display:block; }
+  .rowlink .arrow { margin-left:auto; color:var(--muted); font-size:22px; }
+  .h2 { font-size:17px; font-weight:800; margin:4px 0 10px; }
+  /* grille des paiements */
+  .gridwrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  table.grid { border-collapse:separate; border-spacing:3px; font-size:13px; }
+  table.grid th { font-weight:600; color:var(--muted); white-space:nowrap; padding:0 2px; font-size:12px; }
+  table.grid td.who { position:sticky; left:0; background:var(--card); white-space:nowrap; padding-right:6px; font-size:14px; max-width:130px; overflow:hidden; text-overflow:ellipsis; }
+  table.grid tr { cursor:pointer; }
+  .c { width:26px; height:26px; border-radius:6px; text-align:center; font-weight:700; font-size:13px; line-height:26px; }
+  .c-P { background:#1f9d55; color:#fff; } .c-A { background:#2563eb; color:#fff; } .c-H { background:#f59e0b; color:#3b2400; }
+  .c-R { background:#dc2626; color:#fff; } .c-C { background:#fde68a; color:#5b4600; } .c-F { background:#eef1f4; color:#9aa3ab; } .c- { background:transparent; }
+  .legend { display:flex; flex-wrap:wrap; gap:10px; font-size:14px; margin:8px 0; } .legend span { display:inline-flex; align-items:center; gap:5px; }
+  .legend .c { width:18px; height:18px; line-height:18px; font-size:11px; display:inline-block; }
+  .tl .ev { display:flex; gap:12px; padding:8px 0; border-top:1px solid var(--line); } .tl .ev:first-child { border-top:none; }
+  .tl .dot { width:12px; height:12px; border-radius:50%; margin-top:6px; flex:0 0 12px; background:var(--pri); }
+  .tl .dot.tache { background:#f59e0b; } .tl .dot.contrat { background:#7c3aed; } .tl .dot.projet { background:#0891b2; } .tl .dot.late { background:var(--bad); }
+  .kpis .kpi.click { cursor:pointer; border:2px solid transparent; } .kpis .kpi.click:hover { border-color:var(--pri); }
+  .mchips { display:flex; flex-wrap:wrap; gap:6px; } .mchips .c { width:auto; padding:0 8px; font-size:12px; }
+
+  /* ================= Thème « Registre » : cahier de comptes ================= */
+  :root { --bg:#f6f1e7; --card:#fbf8f1; --ink:#1d1a16; --muted:#6b6358; --pri:#9a4a1c; --pri-ink:#fbf8f1; --ok:#2f6b3a; --bad:#a42a1e; --warn:#8a5a12; --line:#d8cfbf; }
+  body { background:var(--bg); color:var(--ink); font-family:"Source Sans 3","Segoe UI",Arial,sans-serif; }
+  h1, .big, .h2, .kpi b, .rowlink b, header h1 { font-family:"Spectral",Georgia,"Times New Roman",serif; }
+  header { background:var(--bg); color:var(--ink); border-bottom:3px double var(--ink); padding:16px 16px 10px; }
+  header h1 { font-size:22px; font-weight:700; letter-spacing:.2px; }
+  header button { color:var(--ink); border:1px solid var(--ink); border-radius:2px; background:transparent; }
+  nav { background:var(--bg); border-bottom:1px solid var(--line); top:58px; }
+  nav button { color:var(--muted); font-weight:600; border-bottom:2px solid transparent; letter-spacing:.3px; }
+  nav button.on { color:var(--ink); border-bottom-color:var(--pri); }
+  .card { background:transparent; border:none; border-top:1px solid var(--line); border-radius:0; padding:14px 2px; margin-bottom:6px; }
+  .ok-box { background:transparent; border:none; border-left:3px solid var(--ok); padding-left:12px; }
+  .err { background:transparent; border-left:3px solid var(--bad); border-radius:0; color:var(--bad); }
+  .kpis { gap:0; }
+  .kpi { background:transparent; border-radius:0; border-bottom:1px dotted var(--line); padding:10px 4px; }
+  .kpi b { font-size:24px; font-weight:600; }
+  .kpis .kpi.click { border:none; border-bottom:1px dotted var(--line); } .kpis .kpi.click:hover { border-color:var(--pri); background:rgba(154,74,28,.04); }
+  .h2 { font-size:19px; font-weight:700; border-bottom:1px solid var(--ink); padding-bottom:4px; display:inline-block; }
+  .big { font-weight:600; }
+  .btn { border-radius:3px; font-weight:600; letter-spacing:.2px; }
+  .btn.pri { background:var(--ink); color:var(--pri-ink); }
+  .btn.sec { background:transparent; color:var(--ink); border:1px solid var(--ink); }
+  .btn.wa { background:transparent; color:#1c5b35; border:1px solid #1c5b35; }
+  .btn.danger { background:transparent; color:var(--bad); border:1px solid var(--bad); }
+  .chip { border-radius:2px; border-color:var(--ink); color:var(--ink); background:transparent; }
+  input, select, textarea { border-radius:2px; border:1px solid #b9ae9b; background:#fffdf8; }
+  input:focus, select:focus, textarea:focus { outline:2px solid var(--pri); outline-offset:1px; }
+  .space-list .rowlink { background:transparent; border:none; border-bottom:1px solid var(--line); border-radius:0; padding:14px 2px; margin:0; }
+  .space-list .rowlink:hover { background:rgba(154,74,28,.05); }
+  .rowlink .ico, .tile .ico { display:none; }
+  .rowlink .arrow { color:var(--pri); }
+  .muted { color:var(--muted); }
+  /* lisibilité (lecteurs âgés) */
+  /* onglets : tous visibles, sur deux lignes si besoin (pas de défilement caché) */
+  nav { flex-wrap:wrap; overflow-x:visible; } nav button { flex:1 1 auto; padding:10px 12px; }
+  .card.accueil { border:none; border-left:3px solid var(--pri); background:rgba(154,74,28,.05); padding:12px 14px; } .accueil-l { margin:0; padding-left:20px; } .accueil-l li { margin:6px 0; } .accueil-l .btn.small { margin:4px 0 0 4px; padding:6px 12px; font-size:16px; }
+  .etapes { display:flex; flex-wrap:wrap; gap:4px 14px; margin-top:8px; font-size:16px; color:var(--muted); } .etapes .fait { color:var(--ok); font-weight:600; } .etapes small { font-weight:400; color:var(--muted); }
+  .reponse { margin-top:8px; padding:10px 12px; border-left:3px solid var(--ok); background:rgba(47,107,58,.06); }
+  .card.nouveau { border:2px solid var(--pri); padding:12px 14px; background:rgba(154,74,28,.06); } .card.nouveau ul { margin:6px 0 0; padding-left:20px; }
+  body { font-size:19px; } .muted { font-size:16px; } .legend { font-size:16px; } .mchips .c { font-size:14px; height:30px; line-height:30px; } .btn { font-size:19px; padding:16px; }
+  .st-a_jour { color:var(--ok); } .st-retard { color:var(--bad); } .st-avance { color:#2c4f7c; }
+  .c { border-radius:2px; }
+  .c-P { background:#2f6b3a; } .c-A { background:#2c4f7c; } .c-H { background:#c58a2b; color:#fff; } .c-R { background:#a42a1e; } .c-C { background:#efe1b8; color:#5b4600; } .c-F { background:#ebe4d6; }
+  table.grid td.who { background:var(--bg); }
+  .tl .dot { border-radius:0; width:8px; height:8px; margin-top:8px; flex-basis:8px; background:var(--ink); }
+  .tl .dot.late { background:var(--bad); } .tl .dot.projet { background:#2c4f7c; } .tl .dot.contrat { background:var(--pri); } .tl .dot.tache { background:#c58a2b; }
+  details > summary { list-style:none; } details > summary::-webkit-details-marker { display:none; }
+  #busy { background:rgba(246,241,231,.85); font-family:"Spectral",Georgia,serif; }
+  #docsheet { background:var(--card) !important; border-radius:0 !important; border-top:3px double var(--ink) !important; box-shadow:none !important; }
+  a { color:var(--pri); }
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700&family=Spectral:wght@500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+<header><h1 id="title">Espace bureau</h1><button id="homeBtn" style="display:none" onclick="logout()">Quitter</button></header>
+<nav id="nav" hidden></nav>
+<main id="app"></main>
+<div id="busy">Patientez…</div>
+
+<script>
+var BOOT = (function(){
+  var q = new URLSearchParams(location.search), clean = function(v){ return String(v||'').replace(/[^A-Za-z0-9._~-]/g,'').slice(0,2000); };
+  return { k: clean(q.get('k')), g: clean(q.get('g')), r: clean(q.get('r')), googleLogin: '', syndicat: 'Syndic' };
+})();
+call('bootInfo').then(function(b){ if(b){ BOOT.syndicat = b.syndicat || BOOT.syndicat; BOOT.googleLogin = b.googleLogin || ''; } }, function(){});
+var S = { session:null, k:null, me:null, apts:null };
+var STORE = 'syndic.session';
+
+// ---------- utilitaires ----------
+function $(id){ return document.getElementById(id); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+function dh(x){ var n=Math.round((Number(x)||0)*100)/100; return n.toFixed(n%1?2:0).replace(/\B(?=(\d{3})+(?!\d))/g,' ')+' DH'; }
+function today(){ var d=new Date(); return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2); }
+function busy(on){ $('busy').style.display = on?'flex':'none'; }
+var CURRENT_SPACE = 'dashboard';
+var ROUTE_SPACE = { dashboard:'dashboard', appart:'dashboard', mouvements:'dashboard', afaire:'dashboard', tableau:'dashboard', appartements:'dashboard',
+  tresorerie:'tresorerie', compta:'tresorerie', etats:'tresorerie', budget:'tresorerie', rappro:'tresorerie', cloture:'tresorerie', factures:'tresorerie', liensCopro:'tresorerie', signalements:'tresorerie', demandes:'secretariat', paiement:'tresorerie', depense:'tresorerie', justifs:'tresorerie', relances:'tresorerie', decharge:'tresorerie',
+  secretariat:'secretariat', reunions:'secretariat', reunionNew:'secretariat', reunion:'secretariat', presences:'secretariat', decisions:'secretariat', incidents:'secretariat', contrats:'secretariat',
+  projets:'secretariat', admin:'admin', acces:'admin', donnees:'admin', demarrage:'admin', monappart:'monappart' };
+function renderNav(){
+  var n=$('nav'); if(!S.session || !S.me){ n.hidden=true; return; }
+  var tabs=[['dashboard','Tableau de bord']];
+  if(has('tresorier')) tabs.push(['tresorerie','Trésorerie']);
+  if(has('secretaire')) tabs.push(['secretariat','Secrétariat']);
+  if(has('admin')) tabs.push(['admin','Admin']);
+  if(S.me && S.me.apt) tabs.push(['monappart','Mon appartement']);
+  n.innerHTML = tabs.map(function(t){ return '<button class="'+(t[0]===CURRENT_SPACE?'on':'')+'" onclick="go(\''+t[0]+'\')">'+t[1]+'</button>'; }).join('');
+  n.hidden=false;
+}
+// Thème « Registre » : pas d'emojis décoratifs (on garde ✓ ✔ ✗ ½ • et les flèches)
+var EMOJI = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{2712}\u{2718}-\u{27BF}\u{2B00}-\u{2BFF}\u{23E9}-\u{23FA}\u{FE0F}\u{200D}]/gu;
+function stripEmoji(root){
+  if(!root) return;
+  if(root.nodeType===3){ if(EMOJI.test(root.nodeValue)) root.nodeValue = root.nodeValue.replace(EMOJI,'').replace(/^\s+(?=\S)/,''); EMOJI.lastIndex=0; return; }
+  var w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null), n;
+  while((n = w.nextNode())){ if(EMOJI.test(n.nodeValue)) n.nodeValue = n.nodeValue.replace(EMOJI,'').replace(/^\s+(?=\S)/,''); EMOJI.lastIndex=0; }
+}
+new MutationObserver(function(ms){ ms.forEach(function(m){ Array.prototype.forEach.call(m.addedNodes, stripEmoji); }); }).observe(document.documentElement, {childList:true, subtree:true});
+function view(title, html){ $('title').textContent = title; $('app').innerHTML = html; $('homeBtn').style.display = S.session?'inline-block':'none'; renderNav(); if(!S.silent) window.scrollTo(0,0); }
+function showErr(msg){ var e=document.querySelector('.err'); if(e) e.remove(); var d=document.createElement('div'); d.className='err'; d.textContent=msg; $('app').appendChild(d); d.scrollIntoView({behavior:'smooth'}); }
+function has(){ var roles=(S.me&&S.me.roles)||[]; for(var i=0;i<arguments.length;i++){ if(roles.indexOf(arguments[i])>=0) return true; } return roles.indexOf('admin')>=0; }
+function saveStore(){ try{ localStorage.setItem(STORE, JSON.stringify({k:S.k, session:S.session})); }catch(e){} }
+function loadStore(){ try{ return JSON.parse(localStorage.getItem(STORE)||'null'); }catch(e){ return null; } }
+function clearStore(){ try{ localStorage.removeItem(STORE); }catch(e){} }
+
+function call(fn){
+  var args = Array.prototype.slice.call(arguments,1);
+  return new Promise(function(res, rej){
+    var r = google.script.run.withSuccessHandler(res).withFailureHandler(function(e){ rej(new Error(e && e.message || 'Erreur réseau')); });
+    r[fn].apply(r, args);
+  });
+}
+// ---------- Rapidité : cache des lectures dans le navigateur ----------
+// Un écran déjà vu s'affiche tout de suite, puis se met à jour en arrière-plan.
+// Toute écriture (paiement, dépense…) vide ce cache : jamais de donnée périmée après une action.
+var READS = { 'moi':1, 'dashboard.global':1, 'appartement.detail':1, 'appartements.liste':1, 'tableau':1, 'mouvements.liste':1, 'relances.liste':1,
+  'reunions.liste':1, 'decisions.liste':1, 'incidents.liste':1, 'contrats.liste':1, 'projets.liste':1, 'depense.liste':1, 'paiement.liste':1,
+  'messages.liste':1, 'categories.liste':1, 'signalements.liste':1, 'demandes.liste':1, 'etats.exercices':1, 'etats.get':1, 'budget.get':1,
+  'rappro.liste':1, 'clotures.liste':1, 'admin.donnees':1, 'residents.liste':1, 'acces.liste':1, 'fichiers.liste':1 };
+var CC = {}, CC_GEN = 0, CC_TTL = 15*60*1000;
+var busyTimer = null;
+function busySoon(on){ // « Patientez… » seulement si l'attente dépasse 0,4 s
+  if(on){ if(!busyTimer) busyTimer = setTimeout(function(){ busy(true); }, 400); }
+  else { clearTimeout(busyTimer); busyTimer = null; busy(false); }
+}
+function rawApi(action, payload){
+  return call('api', S.session, action, payload||{}).then(function(r){
+    if(!r.ok){ if(r.error==='SESSION_EXPIREE'){ CC={}; clearStore(); S.session=null; start(); throw new Error('Session expirée, reconnectez-vous.'); } throw new Error(r.error); }
+    return r.data;
+  });
+}
+function userIsEditing(){
+  var a = document.activeElement;
+  if(a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) return true;
+  return !!document.querySelector('#app details[open]') || !!$('docsheet');
+}
+function api(action, payload){
+  var key = READS[action] ? action+'|'+JSON.stringify(payload||{}) : null;
+  if(!key){ CC = {}; CC_GEN++; }                  // écriture : on oublie tout
+  var gen = CC_GEN;
+  var hit = key && CC[key];
+  if(hit && Date.now()-hit.t < CC_TTL){
+    var route = S.route;
+    if(!S.silent && Date.now()-hit.t > 5000) rawApi(action, payload).then(function(d){   // donnée toute récente : pas de nouvel aller-retour
+      if(gen !== CC_GEN) return;
+      var changed = JSON.stringify(d) !== JSON.stringify(hit.data);
+      CC[key] = { t: Date.now(), data: d };
+      // mise à jour discrète : seulement en haut de page, sans saisie en cours, et sans faire bouger la page
+      if(changed && route && S.route === route && !userIsEditing() && window.scrollY < 80 && ROUTES[route.name]){
+        var y = window.scrollY; S.silent = true;
+        try { ROUTES[route.name](route.arg); } catch(e){}
+        setTimeout(function(){ S.silent = false; window.scrollTo(0, y); }, 400);
+      }
+    }).catch(function(){});
+    return Promise.resolve(JSON.parse(JSON.stringify(hit.data)));
+  }
+  busySoon(true);
+  return rawApi(action, payload).then(function(d){
+    busySoon(false);
+    if(key && gen === CC_GEN) CC[key] = { t: Date.now(), data: d };
+    return d;
+  }, function(e){ busySoon(false); throw e; });
+}
+/** Même chose qu'api(), mais renvoie {ok, data | error} (sans exception). */
+function apiOk(action, payload){ return api(action, payload).then(function(d){ return {ok:true, data:d}; }, function(e){ return {ok:false, error:e.message}; }); }
+/** Préchargement discret des écrans les plus utilisés. */
+function prefetch(list){ list.forEach(function(x){ if(CC[x[0]+'|'+JSON.stringify(x[1]||{})]) return; rawApi(x[0], x[1]||{}).then(function(d){ CC[x[0]+'|'+JSON.stringify(x[1]||{})] = { t: Date.now(), data: d }; }).catch(function(){}); }); }
+function guard(p){ return p.catch(function(e){ showErr(e.message); }); }
+
+/** Lit un fichier (photo réduite à 1600 px, ou PDF) en base64 */
+function readFile(input){
+  var f = input && input.files && input.files[0];
+  if(!f) return Promise.resolve(null);
+  if(f.size > 15*1024*1024 && !/^image\//.test(f.type)) return Promise.reject(new Error('Fichier trop lourd (15 Mo max).'));
+  return new Promise(function(res, rej){
+    var fr = new FileReader();
+    fr.onerror = function(){ rej(new Error('Lecture du fichier impossible.')); };
+    fr.onload = function(){
+      if(!/^image\//.test(f.type)) return res({ name:f.name, mimeType:f.type||'application/pdf', data:String(fr.result).split(',')[1] });
+      var img = new Image();
+      img.onload = function(){
+        var max=1600, w=img.width, h=img.height, r=Math.min(1, max/Math.max(w,h));
+        var c=document.createElement('canvas'); c.width=Math.round(w*r); c.height=Math.round(h*r);
+        c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+        res({ name:(f.name||'photo').replace(/\.\w+$/,'')+'.jpg', mimeType:'image/jpeg', data:c.toDataURL('image/jpeg',0.82).split(',')[1] });
+      };
+      img.onerror = function(){ res({ name:f.name, mimeType:f.type, data:String(fr.result).split(',')[1] }); };
+      img.src = fr.result;
+    };
+    fr.readAsDataURL(f);
+  });
+}
+function fileField(id, label, hint){
+  return '<label for="'+id+'">'+label+'</label><input type="file" id="'+id+'" accept="image/*,application/pdf">'+(hint?'<div class="muted">'+hint+'</div>':'');
+}
+function waBtn(href, text){ return '<a class="btn wa" target="_blank" rel="noopener" href="'+esc(href)+'">'+(text||'Ouvrir WhatsApp')+'</a>'; }
+function waLink(phone, text){ return 'https://wa.me/'+(phone||'')+'?text='+encodeURIComponent(text||''); }
+/** Signature des messages envoyés depuis l'application : nom + fonction (intitulé neutre). */
+function mySig(prefer){
+  if(!S.me) return '';
+  var r = S.me.roles||[], L = { president:'Syndic', tresorier:'Trésorerie du syndic', secretaire:'Secrétariat du syndic', admin:'Administration du syndic', consultation:'Bureau du syndic' };
+  var k = r.indexOf(prefer)>=0 ? prefer : ['president','tresorier','secretaire','admin','consultation'].filter(function(x){ return r.indexOf(x)>=0; })[0] || 'consultation';
+  return S.me.nom+'\n'+L[k];
+}
+
+function loadApts(force){
+  if(S.apts && !force) return Promise.resolve(S.apts);
+  return api('appartements.liste').then(function(a){ S.apts=a; return a; });
+}
+function aptOptions(sel){
+  return '<option value="">— Choisir —</option>' + S.apts.map(function(a){
+    var st = a.statut==='retard' ? ' · en retard '+a.retard+' mois' : (a.statut==='avance'?' · payé jusqu\'à '+a.payeJusqua:' · à jour');
+    return '<option value="'+esc(a.id)+'"'+(sel===a.id?' selected':'')+'>'+esc(a.id+' – '+a.nom+st)+'</option>';
+  }).join('');
+}
+function aptCard(a){
+  if(!a) return '';
+  return '<div class="card"><b>'+esc(a.id)+' – '+esc(a.nom)+'</b><br><span class="st-'+a.statut+'">'+esc(a.statutLabel)+'</span>'+
+    (a.du>0?' · reste dû <b>'+dh(a.du)+'</b> ('+a.retard+' mois)':'')+'<br><span class="muted">Payé jusqu\'à : '+esc(a.payeJusqua)+(a.derniereRelance?' · dernière relance le '+esc(a.derniereRelance.date)+' (niv. '+a.derniereRelance.niveau+')':'')+'</span></div>';
+}
+function findApt(id){ return (S.apts||[]).filter(function(a){return a.id===id;})[0]; }
+
+// ---------- connexion ----------
+function start(){
+  if(BOOT.r){ return residentScreen(BOOT.r); }
+  if(BOOT.g){
+    var g = BOOT.g; BOOT.g='';
+    busy(true);
+    return call('authLoginGoogle', g).then(function(r){ busy(false); if(!r.ok) return noAccess(r.error); S.k='google'; S.session=r.data.session; saveStore(); home(); });
+  }
+  var st = loadStore();
+  if(BOOT.k){
+    S.k = BOOT.k;
+    if(st && st.k===BOOT.k && st.session){ S.session=st.session; return tryResume(pinScreen); }
+    return pinScreen();
+  }
+  if(st && st.session){ S.k=st.k; S.session=st.session; return tryResume(noAccess); }
+  noAccess();
+}
+function tryResume(fallback){
+  busy(true);
+  call('api', S.session, 'moi', {}).then(function(r){ busy(false); if(r.ok){ S.me=r.data; home(); } else { S.session=null; clearStore(); fallback(); } }, function(){ busy(false); fallback(); });
+}
+function noAccess(msg){
+  view('Espace bureau', '<div class="card"><p><b>'+esc(BOOT.syndicat)+'</b></p>'+(msg?'<div class="err">'+esc(msg)+'</div>':'')+
+    '<p>Pour entrer, ouvrez votre <b>lien personnel</b> (reçu par WhatsApp de l\'administrateur).</p>'+
+    (BOOT.googleLogin?'<a class="btn sec" href="'+esc(BOOT.googleLogin)+'">Se connecter avec mon compte Google</a>':'')+'</div>');
+}
+function pinScreen(){
+  busy(true);
+  call('authLinkStatus', S.k).then(function(r){
+    busy(false);
+    if(!r.ok || !r.data.ok) return noAccess((r.data&&r.data.message)||r.error);
+    var setup = r.data.needPinSetup;
+    view('Connexion', '<div class="card"><p>Bonjour <b>'+esc(r.data.nom)+'</b>.</p>'+
+      (setup?'<p>Choisissez un <b>code à 4 chiffres</b>. Il vous sera demandé de temps en temps.</p>':'<p>Entrez votre <b>code à 4 chiffres</b>.</p>')+
+      '<input id="pin" class="pin" type="password" inputmode="numeric" maxlength="4" autocomplete="off">'+
+      (setup?'<label>Retapez le code</label><input id="pin2" class="pin" type="password" inputmode="numeric" maxlength="4" autocomplete="off">':'')+
+      '<button class="btn pri" id="go">Entrer</button></div>');
+    $('go').onclick = function(){
+      var p=$('pin').value;
+      if(setup && p!==$('pin2').value) return showErr('Les deux codes ne sont pas identiques.');
+      busy(true);
+      call(setup?'authSetPin':'authLoginPin', S.k, p).then(function(r){
+        busy(false);
+        if(!r.ok) return showErr(r.error);
+        S.session=r.data.session; saveStore(); home();
+      }, function(e){ busy(false); showErr(e.message); });
+    };
+  }, function(e){ busy(false); noAccess(e.message); });
+}
+function logout(){ clearStore(); S.session=null; S.me=null; if(S.k && S.k!=='google'){ pinScreen(); } else { noAccess(); } }
+
+// ---------- navigation ----------
+var ROUTES = {};
+function spaceAllowed(sp){ return sp==='dashboard' || (sp==='monappart' && S.me && S.me.apt) || (sp==='tresorerie'&&has('tresorier')) || (sp==='secretariat'&&has('secretaire')) || (sp==='admin'&&has('admin')); }
+/** Bouton « Retour » du téléphone : chaque écran est ajouté à l'historique de l'application
+ *  (google.script.history), pour que « Retour » revienne à l'écran précédent au lieu de quitter l'application. */
+var HIST = { ready:false, first:true };
+function histParams(){ var p = {}; if(BOOT.k) p.k = BOOT.k; if(BOOT.r) p.r = BOOT.r; return p; }
+function histInit(){
+  if(HIST.ready) return; HIST.ready = true;
+  try {
+    google.script.history.setChangeHandler(function(e){
+      var st = e && e.state;
+      if(!S.session) return;                       // pas connecté : l'écran de code reste affiché
+      if(st && st.r && ROUTES[st.r]) go(st.r, st.a === null ? undefined : st.a, true);
+      else go('dashboard', undefined, true);
+    });
+  } catch(e){}
+}
+function histPush(name, arg){
+  try {
+    histInit();
+    var st = { r:name, a:(arg===undefined?null:arg) };
+    if(HIST.first){ HIST.first = false; google.script.history.replace(st, histParams()); }
+    else google.script.history.push(st, histParams());
+  } catch(e){}
+}
+function go(name, arg, fromHistory){
+  if(!fromHistory) histPush(name, arg);
+  var sp = ROUTE_SPACE[name];
+  if(name==='messages') sp = (CURRENT_SPACE==='secretariat'||!has('tresorier')) ? 'secretariat' : 'tresorerie';
+  if(sp && spaceAllowed(sp)) CURRENT_SPACE = sp;
+  S.route = { name: name, arg: arg };
+  if(name !== 'monappart' && window.R) R.bureau = false;
+  var f=ROUTES[name]; if(f) f(arg);
+}
+
+/** Après connexion : profil, puis tableau de bord global ; puis préchargement des écrans courants. */
+function home(){
+  api('moi').then(function(me){
+    S.me = me; go('dashboard');
+    setTimeout(function(){
+      var l = [['mouvements.liste',{}], ['reunions.liste',{}], ['appartements.liste',{}]];
+      if(has('tresorier')) l.push(['relances.liste',{}], ['categories.liste',{}], ['depense.liste',{manquants:true}]);
+      if(has('secretaire')) l.push(['demandes.liste',{}], ['projets.liste',{}]);
+      prefetch(l);
+    }, 1500);
+  }).catch(function(e){ showErr(e.message); });
+}
+ROUTES.home = function(){ go('dashboard'); };
+
+// ---------- paiement ----------
+ROUTES.paiement = function(pre){
+  guard(loadApts(true).then(function(){
+    view('Nouveau paiement',
+      '<div class="card"><label>Appartement</label><select id="apt">'+aptOptions(pre)+'</select><div id="aptInfo"></div>'+
+      '<label>Montant (DH)</label><input id="montant" type="number" inputmode="decimal" min="1" step="0.01">'+
+      '<div class="row" id="quick"></div>'+
+      '<label>Date du paiement</label><input id="date" type="date" value="'+today()+'">'+
+      '<label>Mode</label><select id="mode"><option value="virement">Virement</option><option value="depot">Dépôt à la banque</option></select>'+
+      '<label>Référence bancaire (facultatif)</label><input id="ref" type="text">'+
+      fileField('preuve','Preuve (avis de virement, bordereau de dépôt)','Photo ou PDF. Facultatif, mais recommandé.')+
+      '<label><input type="checkbox" id="papier" style="width:auto"> Reçu papier déjà remis (carnet)</label>'+
+      '<div id="papierBox" style="display:none"><label>N° du reçu papier</label><input id="papierNo" type="text"></div>'+
+      '<button class="btn pri" id="save">Enregistrer le paiement</button></div>');
+    function refresh(){
+      var a = findApt($('apt').value);
+      $('aptInfo').innerHTML = aptCard(a);
+      var q = [['1 mois',300],['3 mois',900],['6 mois',1800],['12 mois',3600]];
+      if(a && a.du>0) q.unshift(['Solde dû', a.du]);
+      $('quick').innerHTML = q.map(function(x){ return '<span class="chip" data-v="'+x[1]+'">'+x[0]+' · '+dh(x[1])+'</span>'; }).join('');
+      Array.prototype.forEach.call(document.querySelectorAll('#quick .chip'), function(c){ c.onclick=function(){ $('montant').value=c.getAttribute('data-v'); }; });
+    }
+    $('apt').onchange = refresh; refresh();
+    $('papier').onchange = function(){ $('papierBox').style.display = this.checked?'block':'none'; };
+    $('save').onclick = function(){
+      if(!$('apt').value) return showErr('Choisissez l\'appartement.');
+      if(!(Number($('montant').value)>0)) return showErr('Indiquez le montant.');
+      guard(readFile($('preuve')).then(function(f){
+        return api('paiement.creer', { appartement:$('apt').value, montant:$('montant').value, date:$('date').value, mode:$('mode').value, reference:$('ref').value, preuve:f, recuPapier:$('papier').checked?$('papierNo').value:'' });
+      }).then(function(r){
+        S.apts=null;
+        view('Paiement enregistré', '<div class="card ok-box"><p class="big">✔ '+esc(r.numero)+'</p><p>Période : <b>'+esc(r.mois)+'</b></p>'+
+          aptCard(r.apres)+(r.lien?'<a class="btn sec" target="_blank" href="'+esc(r.lien)+'">Voir le reçu PDF</a>':'')+
+          waBtn(r.whatsapp,'Envoyer le reçu par WhatsApp')+'</div><button class="btn sec" onclick="go(\'paiement\')">Autre paiement</button>');
+      }));
+    };
+  }));
+};
+
+// ---------- dépense ----------
+ROUTES.depense = function(){
+  guard(api('categories.liste').then(function(cl){ depenseForm(cl); }));
+};
+function depenseForm(cl){
+  var att = {}; cl.forEach(function(c){ att[c.nom]=c.attendu; });
+  view('Nouvelle dépense',
+    '<div class="card"><label>Catégorie</label><select id="cat">'+cl.map(function(c){return '<option>'+esc(c.nom)+'</option>';}).join('')+'</select>'+
+    '<div class="muted" id="attendu"></div>'+
+    '<label>Bénéficiaire (prestataire, personne)</label><input id="benef" type="text">'+
+    '<label>Description</label><input id="desc" type="text" placeholder="ex. Salaire gardien janvier">'+
+    '<label>Montant (DH)</label><input id="montant" type="number" inputmode="decimal" min="1" step="0.01">'+
+    '<label>Date</label><input id="date" type="date" value="'+today()+'">'+
+    '<label>Déjà payée ?</label><select id="paye"><option value="oui">Oui, payée</option><option value="non">Non, facture à payer plus tard</option></select>'+
+    '<div id="payBox"><label>Mode</label><select id="mode"><option value="virement">Virement</option><option value="cheque">Chèque</option></select>'+
+    '<label>N° de chèque / référence (facultatif)</label><input id="ref" type="text"></div>'+
+    fileField('justif','Justificatif','Photo ou PDF. Vous pourrez l\'ajouter plus tard.')+
+    '<button class="btn pri" id="save">Enregistrer la dépense</button></div>');
+  function upd(){ $('attendu').textContent = 'Justificatif attendu : '+(att[$('cat').value]||'Facture'); }
+  $('cat').onchange = upd; upd();
+  $('paye').onchange = function(){ $('payBox').style.display = this.value==='non'?'none':'block'; };
+  $('save').onclick = function(){
+    if(!$('benef').value) return showErr('Indiquez le bénéficiaire.');
+    if(!(Number($('montant').value)>0)) return showErr('Indiquez le montant.');
+    guard(readFile($('justif')).then(function(f){
+      return api('depense.creer', { categorie:$('cat').value, beneficiaire:$('benef').value, description:$('desc').value, montant:$('montant').value, date:$('date').value, mode:$('mode').value, reference:$('ref').value, aPayer:$('paye').value==='non', justificatif:f });
+    }).then(function(r){
+      view('Dépense enregistrée', '<div class="card ok-box"><p class="big">✔ '+esc(r.numero)+'</p>'+
+        (r.justificatif?'<p>Justificatif enregistré.</p>':'<p>⚠ Justificatif manquant ('+esc(r.attendu)+'). Un rappel vous sera envoyé.</p>')+
+        '</div><button class="btn sec" onclick="go(\'depense\')">Autre dépense</button>'+(r.justificatif?'':'<button class="btn sec" onclick="go(\'justifs\')">Ajouter le justificatif</button>'));
+    }));
+  };
+}
+
+ROUTES.justifs = function(){
+  guard(api('depense.liste',{manquants:true}).then(function(list){
+    view('Justificatifs manquants', list.length ? list.map(function(d){
+      return '<div class="card"><b>'+esc(d.numero)+'</b> · '+esc(d.date)+'<br>'+esc(d.categorie)+' – '+esc(d.beneficiaire)+' – <b>'+dh(d.montant)+'</b><br><span class="muted">Attendu : '+esc(d.attendu)+'</span>'+
+        fileField('f_'+d.numero,'Ajouter')+'<button class="btn pri" onclick="addJustif(\''+esc(d.numero)+'\')">Envoyer</button></div>';
+    }).join('') : '<div class="card">✔ Aucun justificatif manquant.</div>');
+  }));
+};
+function addJustif(num){
+  guard(readFile($('f_'+num)).then(function(f){ if(!f) throw new Error('Choisissez une photo ou un PDF.'); return api('justificatif.ajouter',{numero:num, fichier:f}); }).then(function(){ go('justifs'); }));
+}
+
+// ---------- relances ----------
+ROUTES.relances = function(){
+  guard(api('relances.liste').then(function(list){
+    if(!list.length) return view('Relances', '<div class="card">✔ Aucun appartement en retard.</div>');
+    view('Relances', '<p class="muted">'+list.length+' appartement(s) en retard. Les messages s\'ouvrent dans WhatsApp : vous appuyez vous-même sur « envoyer ».</p>'+list.map(function(a){
+      var lvl = a.suggere;
+      var h = '<div class="card"><b>'+esc(a.id)+' – '+esc(a.nom)+'</b><br><span class="st-retard">'+dh(a.du)+' · '+a.retard+' mois</span>'+
+        (lvl?'<br>👉 Suggéré : <b>'+['','rappel amical','second rappel','mise en demeure (décision du syndic)'][lvl]+'</b>':'<br><span class="muted">Relance déjà faite pour ce niveau.</span>')+
+        '<div class="row">'+
+        '<a class="btn small wa" target="_blank" href="'+esc(a.whatsapp1)+'" onclick="markLater(\''+a.id+'\',1)">Rappel amical</a>'+
+        '<a class="btn small wa" target="_blank" href="'+esc(a.whatsapp2)+'" onclick="markLater(\''+a.id+'\',2)">Second rappel</a>'+
+        '<button class="btn small danger" onclick="lettre(\''+a.id+'\')">Lettre de mise en demeure</button></div>'+
+        '<div id="rec_'+a.id+'"></div>';
+      if(a.historique.length) h += '<p class="muted">Historique : '+a.historique.map(function(r){ return esc(r.date)+' niv. '+r.niveau+(r.preuve?' ✔':' <a href="#" onclick="proofForm(\''+esc(r.id)+'\',\''+a.id+'\');return false">+ preuve</a>'); }).join(' · ')+'</p>';
+      return h+'</div>';
+    }).join(''));
+  }));
+};
+function markLater(id, niveau){
+  $('rec_'+id).innerHTML = '<div class="card"><b>Message envoyé ?</b> Enregistrez la relance (niveau '+niveau+').'+
+    fileField('p_'+id,'Capture du message (facultatif)')+'<button class="btn pri" onclick="saveRelance(\''+id+'\','+niveau+')">Enregistrer la relance</button></div>';
+}
+function lettre(id){
+  guard(api('relance.lettre',{appartement:id}).then(function(r){
+    $('rec_'+id).innerHTML = '<div class="card"><a class="btn sec" target="_blank" href="'+esc(r.url)+'">Ouvrir la lettre (PDF) à imprimer</a>'+
+      '<p class="muted">Envoyez-la en recommandé avec accusé de réception, au propriétaire.</p>'+
+      fileField('p_'+id,'Récépissé du recommandé (photo)')+'<button class="btn pri" onclick="saveRelance(\''+id+'\',3,\''+esc(r.url)+'\')">Enregistrer l\'envoi</button></div>';
+  }));
+}
+function saveRelance(id, niveau, doc){
+  guard(readFile($('p_'+id)).then(function(f){ return api('relance.enregistrer',{appartement:id, niveau:niveau, preuve:f, document:doc||''}); }).then(function(){ go('relances'); }));
+}
+function proofForm(relId, aptId){
+  $('rec_'+aptId).innerHTML = '<div class="card">'+fileField('pp_'+aptId,'Preuve pour '+esc(relId))+'<button class="btn pri" id="pp_btn">Envoyer</button></div>';
+  $('pp_btn').onclick = function(){ guard(readFile($('pp_'+aptId)).then(function(f){ if(!f) throw new Error('Choisissez un fichier.'); return api('relance.preuve',{id:relId, fichier:f}); }).then(function(){ go('relances'); })); };
+}
+
+// ---------- messages ----------
+ROUTES.messages = function(){
+  guard(Promise.all([api('messages.liste'), loadApts()]).then(function(res){
+    var list = res[0];
+    var codes = {}; list.forEach(function(m){ codes[m.code] = codes[m.code] || m.titre; });
+    view('Messages', '<div class="card"><label>Message</label><select id="code">'+Object.keys(codes).map(function(c){return '<option value="'+c+'">'+esc(codes[c])+'</option>';}).join('')+'</select>'+
+      '<label>Langue</label><select id="lang"><option value="FR">Français</option><option value="AR">العربية</option></select>'+
+      '<div id="extra"></div><button class="btn sec" id="prep">Préparer le message</button><div id="out"></div></div>');
+    function extra(){
+      var c=$('code').value, h='';
+      if(c==='RELEVE') h='<label>Appartement</label><select id="apt">'+aptOptions()+'</select>';
+      if(c==='BILAN'){ var d=new Date(); d.setMonth(d.getMonth()-1); h='<label>Mois du bilan</label><input id="mois" type="month" value="'+d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'">'; }
+      $('extra').innerHTML=h; $('out').innerHTML='';
+    }
+    $('code').onchange = extra; extra();
+    $('prep').onclick = function(){
+      var c=$('code').value;
+      guard(api('message.preparer',{code:c, langue:$('lang').value, appartement:$('apt')&&$('apt').value, mois:$('mois')&&$('mois').value}).then(function(r){
+        $('out').innerHTML = '<label>Texte (modifiable)</label><textarea id="txt" dir="auto">'+esc(r.texte)+'</textarea>'+
+          '<a class="btn wa" id="wa" target="_blank" href="#">'+(r.phone?'Envoyer au copropriétaire':'Ouvrir WhatsApp et choisir le destinataire')+'</a>'+
+          (c==='BILAN'?'<button class="btn sec" id="pub">J\'ai publié le bilan dans le groupe</button>':'');
+        function link(){ $('wa').href = waLink(r.phone, $('txt').value); }
+        $('txt').oninput = link; link();
+        if($('pub')) $('pub').onclick = function(){ guard(api('echeance.fait',{cle:'bilan:'+$('mois').value}).then(function(){ $('pub').textContent='✔ Noté'; }).catch(function(){ $('pub').textContent='✔ Noté (aucune échéance ouverte)'; })); };
+      }));
+    };
+  }));
+};
+
+// ---------- à faire ----------
+ROUTES.afaire = function(){
+  guard(api('tableau').then(function(d){
+    var l = d.echeances;
+    view('À faire', l.length ? '<div class="card list">'+l.map(function(e){
+      var manual = /^(bilan|releves):/.test(e.cle);
+      return '<div class="item"><b>'+esc(e.type)+'</b><br>'+esc(e.description)+'<br><span class="muted">Pour : '+esc(e.role)+' · avant le '+esc(String(e.due).slice(0,10))+'</span>'+
+        (manual?'<br><button class="btn small sec" onclick="doneDl(\''+esc(e.cle)+'\')">C\'est fait</button>':'')+'</div>';
+    }).join('')+'</div><p class="muted">Les tâches « automatiques » se ferment toutes seules quand l\'outil voit qu\'elles sont faites (justificatif ajouté, relance enregistrée…).</p>' : '<div class="card">✔ Rien à faire pour le moment.</div>');
+  }));
+};
+function doneDl(cle){ guard(api('echeance.fait',{cle:cle}).then(function(){ go('afaire'); })); }
+
+// ---------- tableau ----------
+ROUTES.tableau = function(){
+  guard(api('tableau').then(function(d){
+    var cats = Object.keys(d.parCategorie).sort(function(a,b){return d.parCategorie[b]-d.parCategorie[a];});
+    view('Tableau de bord',
+      '<div class="card"><div class="muted">Solde du compte</div><div class="big">'+dh(d.solde)+'</div></div>'+
+      '<div class="card kpis"><div class="kpi">Encaissé '+esc(d.mois)+'<b>'+dh(d.encMois)+'</b></div><div class="kpi">Dépensé '+esc(d.mois)+'<b>'+dh(d.depMois)+'</b></div>'+
+      '<div class="kpi">Encaissé '+d.annee+'<b>'+dh(d.encAn)+'</b></div><div class="kpi">Dépensé '+d.annee+'<b>'+dh(d.depAn)+'</b></div>'+
+      '<div class="kpi">À jour<b>'+d.ajour+' / '+d.total+'</b></div><div class="kpi">En retard<b>'+d.enRetard+'</b></div></div>'+
+      (d.baseLegaleManquante?'<div class="card">⚠ Le document qui fixe la cotisation (règlement ou PV d\'AG) n\'est pas renseigné.</div>':'')+
+      '<div class="card"><b>Dépenses '+d.annee+' par catégorie</b><div class="list">'+(cats.length?cats.map(function(c){return '<div class="item">'+esc(c)+' : <b>'+dh(d.parCategorie[c])+'</b></div>';}).join(''):'<div class="item muted">Aucune dépense.</div>')+'</div></div>'+
+      (d.page?'<a class="btn sec" target="_blank" href="'+esc(d.page)+'">Page des copropriétaires</a>':''));
+  }));
+};
+
+// ---------- appartements ----------
+ROUTES.appartements = function(){
+  guard(loadApts(true).then(function(list){
+    view('Appartements', '<div class="row"><span class="chip" id="fAll">Tous ('+list.length+')</span><span class="chip" id="fLate">En retard ('+list.filter(function(a){return a.statut==='retard';}).length+')</span></div><div id="lst"></div>');
+    function render(onlyLate){
+      $('lst').innerHTML = list.filter(function(a){ return !onlyLate || a.statut==='retard'; }).map(function(a){
+        return '<div onclick="'+(has('tresorier')?'go(\'paiement\',\''+a.id+'\')':'')+'">'+aptCard(a)+'</div>';
+      }).join('');
+    }
+    $('fAll').onclick=function(){render(false);}; $('fLate').onclick=function(){render(true);}; render(false);
+  }));
+};
+
+// ---------- décharge ----------
+ROUTES.decharge = function(){
+  view('Décharge à faire signer', '<div class="card"><p class="muted">Pour les prestations sans facture (gardien, ménage…). Imprimez, faites signer, puis photographiez-la comme justificatif de la dépense.</p>'+
+    '<label>Bénéficiaire</label><input id="b" type="text"><label>N° CIN (facultatif)</label><input id="cin" type="text">'+
+    '<label>Prestation</label><select id="pr"><option>Gardiennage</option><option>Ménage</option><option>Petits travaux</option><option>Autre</option></select>'+
+    '<label>Période</label><input id="per" type="text" placeholder="ex. janvier 2027"><label>Montant (DH)</label><input id="m" type="number" inputmode="decimal">'+
+    '<label>Mode</label><select id="mo"><option>Virement</option><option>Chèque</option></select>'+
+    '<button class="btn pri" id="gen">Générer la décharge (PDF)</button><div id="out"></div></div>');
+  $('gen').onclick = function(){
+    guard(api('decharge.generer',{beneficiaire:$('b').value, cin:$('cin').value, prestation:$('pr').value, periode:$('per').value, montant:$('m').value, mode:$('mo').value}).then(function(r){
+      $('out').innerHTML = '<a class="btn sec" target="_blank" href="'+esc(r.url)+'">Ouvrir la décharge</a>';
+    }));
+  };
+};
+
+// ---------- accès ----------
+ROUTES.acces = function(){
+  guard(api('acces.liste').then(function(list){
+    MEMBRES = list;
+    view('Accès bureau', '<p class="muted">Une personne peut cumuler plusieurs rôles (ex. secrétaire et trésorier). Si elle habite l\'immeuble, indiquez son appartement : elle verra aussi l\'onglet « Mon appartement ». Générer un nouveau lien désactive l\'ancien.</p>'+
+      '<button class="btn pri" onclick="membreForm()">Ajouter un membre</button><div id="mf_new"></div>'+list.map(function(m){
+      return '<div class="card"><b>'+esc(m.nom)+'</b> <span class="muted">('+esc(m.roles.map(roleLabel).join(', '))+(m.titre?' · '+esc(m.titre):'')+(m.apt?' · appt '+esc(m.apt):'')+')</span><br>'+
+        (m.actif?'':'<span class="st-retard">Inactif</span><br>')+
+        '<span class="muted">Lien : '+(m.lien?'actif':'aucun')+' · Code PIN : '+(m.pin?'défini':'non défini')+(m.email?' · Google : '+esc(m.email):'')+'</span>'+
+        '<div class="row"><button class="btn small sec" onclick="membreForm(\''+esc(m.id)+'\')">Modifier</button>'+
+        (m.actif?'<button class="btn small pri" onclick="newLink(\''+esc(m.id)+'\')">Générer un lien</button>':'')+
+        (m.lien?'<button class="btn small danger" onclick="revoke(\''+esc(m.id)+'\')">Désactiver le lien</button>':'')+'</div><div id="mf_'+esc(m.id)+'"></div><div id="l_'+esc(m.id)+'"></div></div>';
+    }).join(''));
+  }));
+};
+var MEMBRES = [];
+var ROLES_UI = [['admin','Admin (gère les accès et les réglages)'],['president','Syndic – président du bureau (voit tout, reçoit les rappels importants)'],['tresorier','Trésorier (paiements, dépenses, comptabilité)'],['secretaire','Secrétaire (réunions, AG, courriers)'],['consultation','Membre du bureau (consultation, lecture seule)']];
+function roleLabel(r){ return {admin:'admin',tresorier:'trésorier',secretaire:'secrétaire',president:'syndic',consultation:'membre (consultation)'}[r] || r; }
+function membreForm(id){
+  var m = MEMBRES.filter(function(x){ return x.id === id; })[0] || {roles:[], actif:true, titre:'membre'};
+  var box = $(id ? 'mf_'+id : 'mf_new');
+  if(box.innerHTML){ box.innerHTML = ''; return; }
+  box.innerHTML = '<div class="card"><label>Nom</label><input id="mf_nom" value="'+esc(m.nom||'')+'">'+
+    '<label>Rôles (cochez-en un ou plusieurs)</label>'+ROLES_UI.map(function(r){
+      return '<label class="chk"><input type="checkbox" class="mf_role" value="'+r[0]+'"'+(m.roles.indexOf(r[0])>=0?' checked':'')+'> '+esc(r[1])+'</label>';
+    }).join('')+
+    '<label>Titre légal</label><select id="mf_titre">'+['syndic','syndic adjoint','membre'].map(function(t){ return '<option'+(m.titre===t?' selected':'')+'>'+t+'</option>'; }).join('')+'</select>'+
+    '<p class="muted" style="margin:4px 0 0">Titre voté en AG (loi 18-00). En général : le président du bureau est syndic, le trésorier est syndic adjoint.</p>'+
+    '<label>Appartement où il/elle habite (facultatif, ex. A12)</label><input id="mf_apt" value="'+esc(m.apt||'')+'">'+
+    '<label>Téléphone</label><input id="mf_tel" type="tel" value="'+esc(m.tel||'')+'">'+
+    '<label>E-mail (facultatif)</label><input id="mf_email" type="email" value="'+esc(m.email||'')+'">'+
+    (id?'<label class="chk"><input type="checkbox" id="mf_actif"'+(m.actif?' checked':'')+'> Actif (décocher coupe son accès)</label>':'')+
+    '<button class="btn pri" id="mf_ok">Enregistrer</button></div>';
+  $('mf_ok').onclick = function(){
+    var roles = Array.prototype.slice.call(document.querySelectorAll('.mf_role:checked')).map(function(c){ return c.value; });
+    guard(api('acces.membre.enregistrer', { id:id||'', nom:$('mf_nom').value, roles:roles, titre:$('mf_titre').value, appartement:$('mf_apt').value,
+      tel:$('mf_tel').value, email:$('mf_email').value, actif: id ? $('mf_actif').checked : true }).then(function(){ go('acces'); }));
+  };
+}
+function newLink(id){
+  guard(api('acces.lien',{id:id}).then(function(r){
+    $('l_'+id).innerHTML = '<label>Nouveau lien (à n\'envoyer qu\'à la personne)</label><input type="text" readonly value="'+esc(r.url)+'" onclick="this.select()">'+
+      '<p class="muted">'+esc(r.partage||'')+'</p>'+waBtn(r.whatsapp,'Envoyer le lien par WhatsApp');
+  }));
+}
+function revoke(id){ guard(api('acces.revoquer',{id:id}).then(function(){ go('acces'); })); }
+</script>
+<script>
+// =====================================================================
+// Mouvements, réunions et AG, décisions, incidents, contrats
+// =====================================================================
+
+var TYPES_REUNION = ['Réunion de bureau','AG ordinaire','AG extraordinaire','Conseil syndical commun'];
+var MAJORITES = ['Majorité relative (art. 20)','3/4 des voix (art. 19, 21, 24)','Unanimité (art. 22)','Sans vote'];
+function canEditMeetings(){ return has('secretaire'); }
+function opt(list, sel){ return list.map(function(x){ return '<option'+(x===sel?' selected':'')+'>'+esc(x)+'</option>'; }).join(''); }
+function check(ok){ return ok ? '✅' : '⬜'; }
+function linkTo(url, label){ return url ? '<a target="_blank" href="'+esc(String(url).split('\n')[0])+'">'+(label||'ouvrir')+'</a>' : ''; }
+
+// ---------- Mouvements ----------
+ROUTES.mouvements = function(){
+  var d=new Date(), mois=d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2);
+  view('Mouvements', '<div class="card"><label>Mois</label><input id="mv_mois" type="month" value="'+mois+'">'+
+    '<div class="row" style="margin-top:10px"><span class="chip" data-t="">Tout</span><span class="chip" data-t="entrees">Encaissements</span><span class="chip" data-t="sorties">Dépenses</span></div></div><div id="mv_out"></div>');
+  var type='';
+  function load(){
+    guard(api('mouvements.liste',{mois:$('mv_mois').value, type:type}).then(function(list){
+      var e=0,s=0; list.forEach(function(r){ e+=r.entree; s+=r.sortie; });
+      var canUndo = has('tresorier') || has('admin');
+      $('mv_out').innerHTML = '<div class="card kpis"><div class="kpi">Entrées<b>'+dh(e)+'</b></div><div class="kpi">Sorties<b>'+dh(s)+'</b></div></div>'+
+        (list.length?'<div class="card list">'+list.map(function(r){
+          var amt = r.entree>0 ? '<b class="st-a_jour">+ '+dh(r.entree)+'</b>' : '<b class="st-retard">− '+dh(r.sortie)+'</b>';
+          return '<div class="item">'+esc(r.date)+' · '+amt+'<br>'+esc(r.libelle)+(r.tiers?' – '+esc(r.tiers):'')+
+            '<br><span class="muted">'+esc(r.type)+(r.categorie?' · '+esc(r.categorie):'')+' · n° '+esc(r.piece||'—')+' · solde '+dh(r.solde)+'</span>'+
+            (r.lien && /^https?:/.test(r.lien)?' · '+linkTo(r.lien,'📎 pièce'):'')+
+            (canUndo && r.piece && !/^AN-/.test(r.piece) && (r.entree>0 || r.sortie>0) ? '<details><summary class="btn small danger">Annuler (erreur de saisie)</summary>'+
+              '<label>Pourquoi ?</label><input id="an_'+esc(r.piece)+'" placeholder="ex. mauvais montant">'+
+              '<button class="btn danger" onclick="annulerMvt(\''+esc(r.piece)+'\','+(r.entree>0?1:0)+')">Confirmer l\'annulation</button>'+
+              '<p class="muted">L\'opération reste visible, barrée. Vous pourrez ensuite la saisir à nouveau correctement.</p></details>' : '')+'</div>';
+        }).join('')+'</div>':'<div class="card muted">Aucun mouvement pour ce mois.</div>');
+    }));
+  }
+  $('mv_mois').onchange=load;
+  Array.prototype.forEach.call(document.querySelectorAll('.chip[data-t]'), function(c){ c.onclick=function(){ type=c.getAttribute('data-t'); load(); }; });
+  load();
+};
+
+function annulerMvt(num, entree){
+  var motif = ($('an_'+num)||{}).value || '';
+  if(motif.trim().length < 3){ showErr('Écrivez en quelques mots pourquoi vous annulez.'); return; }
+  guard(api(entree ? 'paiement.annuler' : 'depense.annuler', { numero:num, motif:motif.trim() }).then(function(){ go('mouvements'); }));
+}
+
+// ---------- Réunions ----------
+ROUTES.reunions = function(){
+  guard(api('reunions.liste').then(function(list){
+    view('Réunions et AG', (canEditMeetings()?'<button class="btn pri" onclick="go(\'reunionNew\')">＋ Nouvelle réunion ou AG</button>':'')+
+      (list.length?list.map(function(r){
+        var st = r.statut==='tenue'?'<span class="st-a_jour">Tenue</span>':r.statut==='annulée'?'<span class="muted">Annulée</span>':'<span class="st-avance">Prévue</span>';
+        return '<div class="card" onclick="go(\'reunion\',\''+esc(r.id)+'\')" style="cursor:pointer"><b>'+esc(r.type)+'</b> · '+st+'<br>'+esc(r.dateFr)+(r.heure?' à '+esc(r.heure):'')+(r.lieu?' · '+esc(r.lieu):'')+
+          (r.convocationEnRetard?'<br><span class="st-retard">⚠ Convocation non envoyée (limite '+esc(r.convocationLimite)+')</span>':'')+
+          (r.quorum==='non'?'<br><span class="st-retard">Quorum non atteint</span>':'')+'</div>';
+      }).join(''):'<div class="card muted">Aucune réunion enregistrée.</div>'));
+  }));
+};
+
+ROUTES.reunionNew = function(liee){
+  view('Nouvelle réunion', '<div class="card"><label>Type</label><select id="rn_type">'+opt(TYPES_REUNION,'AG ordinaire')+'</select>'+
+    '<label>Date</label><input id="rn_date" type="date"><label>Heure</label><input id="rn_heure" type="time" value="18:00">'+
+    '<label>Lieu</label><input id="rn_lieu" type="text" placeholder="ex. Hall de l\'immeuble">'+
+    '<label>Ordre du jour (un point par ligne)</label><textarea id="rn_ordre" style="min-height:140px" placeholder="Approbation des comptes 2026&#10;Vote du budget 2027&#10;Questions diverses"></textarea>'+
+    '<div id="rn_ag"><label>Date de la 2e réunion si le quorum n\'est pas atteint (facultatif, ≤ 30 jours)</label><input id="rn_date2" type="date"></div>'+
+    '<p class="muted" id="rn_hint"></p><button class="btn pri" id="rn_save">Créer</button></div>');
+  function upd(){
+    var ag=/^AG/.test($('rn_type').value);
+    $('rn_ag').style.display = ag?'block':'none';
+    if(ag && $('rn_date').value){ var d=new Date($('rn_date').value); d.setDate(d.getDate()-15); $('rn_hint').textContent='Convocation à envoyer au plus tard le '+d.toLocaleDateString('fr-FR')+' (15 jours avant).'; }
+    else $('rn_hint').textContent='';
+  }
+  $('rn_type').onchange=upd; $('rn_date').onchange=upd; upd();
+  $('rn_save').onclick=function(){
+    guard(api('reunion.creer',{type:$('rn_type').value, date:$('rn_date').value, heure:$('rn_heure').value, lieu:$('rn_lieu').value, ordre:$('rn_ordre').value, date2:$('rn_date2').value}).then(function(r){
+      go('reunion', r.id);
+      if(r.avertissement) setTimeout(function(){ showErr(r.avertissement); }, 600);
+    }));
+  };
+};
+
+ROUTES.reunion = function(id){
+  guard(Promise.all([api('reunions.liste'), api('decisions.liste',{reunion:id})]).then(function(res){
+    var r = res[0].filter(function(x){return x.id===id;})[0];
+    if(!r) return showErr('Réunion introuvable.');
+    var decs = res[1], ed = canEditMeetings();
+    var h = '<div class="card"><b>'+esc(r.type)+'</b> – '+esc(r.id)+'<br>'+esc(r.dateFr)+(r.heure?' à '+esc(r.heure):'')+(r.lieu?' · '+esc(r.lieu):'')+
+      '<br><span class="muted">Statut : '+esc(r.statut)+(r.liee?' · 2e réunion de '+esc(r.liee):'')+'</span>'+
+      (r.ordre?'<p><b>Ordre du jour</b><br>'+esc(r.ordre).replace(/\n/g,'<br>')+'</p>':'')+'</div>';
+
+    // 1. Convocation
+    h += '<div class="card"><b>'+check(!!r.convocationEnvoyee)+' 1. Convocation</b>'+(r.ag?' <span class="muted">(au plus tard le '+esc(r.convocationLimite)+')</span>':'')+
+      (r.convocation?'<br>'+linkTo(r.convocation,'Voir la convocation (PDF)'):'')+
+      (r.convocationEnvoyee?'<br>Envoyée le '+esc(r.convocationEnvoyee)+(r.preuveConvocation?' · '+linkTo(r.preuveConvocation,'preuve'):''):'');
+    if(ed && r.statut!=='annulée'){
+      h += '<div class="row"><select id="cv_lang" style="width:auto"><option value="FR">FR</option><option value="AR">AR</option></select>'+
+        '<button class="btn small sec" onclick="convocation(\''+r.id+'\')">Générer la convocation</button></div><div id="cv_out"></div>'+
+        (r.convocationEnvoyee?'':fileField('cv_preuve','Preuve d\'envoi (feuille d\'émargement, récépissés…)','Pour une AG : remise contre signature ou recommandé ; WhatsApp en complément.')+
+        '<button class="btn small pri" onclick="convEnvoyee(\''+r.id+'\')">Marquer la convocation comme envoyée</button>');
+    }
+    h += '</div>';
+
+    // 2. Présences
+    h += '<div class="card"><b>'+check(r.statut==='tenue')+' 2. Présences'+(r.ag?' et quorum':'')+'</b>'+
+      (r.statut==='tenue'?'<br>Présents : '+esc(r.presents)+' · représentés : '+esc(r.representes)+' sur '+esc(r.coproprietaires)+(r.ag?' · quorum : <b>'+(r.quorum==='oui'?'atteint':'non atteint')+'</b>':''):'')+
+      '<br><button class="btn small sec" onclick="go(\'presences\',\''+r.id+'\')">'+(ed?'Saisir / voir les présences':'Voir les présences')+'</button>';
+    if(ed && r.ag && r.quorum==='non'){
+      h += '<div class="card" style="margin-top:10px"><b>Quorum non atteint</b> : créer la 2e réunion (≤ 30 jours, délibère quel que soit le nombre de présents).'+
+        '<label>Date</label><input id="ag2_date" type="date" value="'+esc(r.date2||'')+'"><label>Heure</label><input id="ag2_heure" type="time" value="'+esc(r.heure||'')+'">'+
+        '<button class="btn small pri" onclick="secondeAG(\''+r.id+'\')">Créer la 2e réunion</button></div>';
+    }
+    h += '</div>';
+
+    // 3. Décisions
+    h += '<div class="card"><b>'+check(decs.length>0)+' 3. Décisions</b>'+(decs.length?'<div class="list">'+decs.map(function(x){
+      return '<div class="item">'+esc(x.decision)+'<br><span class="muted">'+esc(x.majorite)+' · pour '+esc(x.pour)+' / contre '+esc(x.contre)+' / abst. '+esc(x.abstention)+' · '+
+        (x.adoptee==='oui'?'<b class="st-a_jour">adoptée</b>':x.adoptee==='non'?'<b class="st-retard">rejetée</b>':'sans vote')+(x.responsable?' · resp. '+esc(x.responsable):'')+'</span></div>';
+    }).join('')+'</div>':'<p class="muted">Aucune décision.</p>');
+    if(ed && r.statut!=='annulée') h += '<details><summary class="btn small sec" style="display:inline-block">＋ Ajouter une décision</summary>'+
+      '<label>Décision</label><textarea id="dc_txt" style="min-height:80px"></textarea><label>Majorité requise</label><select id="dc_maj">'+opt(MAJORITES)+'</select>'+
+      '<div class="row"><div style="flex:1"><label>Pour</label><input id="dc_pour" type="number" min="0"></div><div style="flex:1"><label>Contre</label><input id="dc_contre" type="number" min="0"></div><div style="flex:1"><label>Abst.</label><input id="dc_abs" type="number" min="0"></div></div>'+
+      '<label>Résultat</label><select id="dc_adopt"><option value="oui">Adoptée</option><option value="non">Rejetée</option></select>'+
+      '<label>Responsable (facultatif)</label><input id="dc_resp" type="text"><label>À faire avant le (facultatif)</label><input id="dc_ech" type="date">'+
+      '<button class="btn small pri" onclick="addDecision(\''+r.id+'\')">Enregistrer la décision</button></details>';
+    h += '</div>';
+
+    // 4. PV
+    h += '<div class="card"><b>'+check(!!r.pvSigne)+' 4. Procès-verbal</b>'+
+      (r.pv?'<br>'+linkTo(r.pv,'Brouillon du PV (PDF)'):'')+(r.pvSigne?'<br>'+linkTo(r.pvSigne,'PV signé'):'')+(r.pvPublie?' · <span class="st-a_jour">publié sur la page des copropriétaires</span>':'');
+    if(ed && r.statut==='tenue'){
+      h += (r.ag?'<label>Président de séance (pas le syndic, art. 17)</label><input id="pv_pres" type="text" value="'+esc(r.presidentSeance||'')+'">'+
+        '<label>Secrétaire de séance</label><input id="pv_secr" type="text" value="'+esc(r.secretaireSeance||'')+'">':'')+
+        '<button class="btn small sec" onclick="genPv(\''+r.id+'\','+(r.ag?'true':'false')+')">Générer le PV à faire signer</button><div id="pv_out"></div>'+
+        fileField('pv_file','PV signé (scan ou photo)')+'<label><input type="checkbox" id="pv_pub" style="width:auto" checked> Publier sur la page des copropriétaires</label>'+
+        '<button class="btn small pri" onclick="pvSigne(\''+r.id+'\')">Déposer le PV signé</button>';
+    }
+    h += '</div>';
+
+    // 5. Notification (AG)
+    if(r.ag){
+      h += '<div class="card"><b>'+check(!!r.pvNotifie)+' 5. Notification du PV à tous</b> <span class="muted">(8 jours au plus)</span>'+
+        (r.pvNotifie?'<br>Notifié le '+esc(r.pvNotifie)+' · recours possibles jusqu\'au <b>'+esc(r.finRecours)+'</b>':'');
+      if(ed && r.pvSigne && !r.pvNotifie){
+        h += '<div class="row"><select id="pn_lang" style="width:auto"><option value="FR">FR</option><option value="AR">AR</option></select><button class="btn small sec" onclick="pvMessage(\''+r.id+'\')">Préparer le message WhatsApp</button></div><div id="pn_out"></div>'+
+          fileField('pn_preuve','Preuve de notification (émargement, recommandés…)')+'<button class="btn small pri" onclick="pvNotifie(\''+r.id+'\')">Marquer le PV comme notifié</button>';
+      }
+      h += '</div>';
+    }
+    if(ed && r.statut==='prévue') h += '<button class="btn danger" onclick="annulerReunion(\''+r.id+'\')">Annuler cette réunion</button>';
+    view('Réunion', h);
+  }));
+};
+function convocation(id){
+  guard(api('reunion.convocation',{id:id, langue:$('cv_lang').value}).then(function(r){
+    $('cv_out').innerHTML = linkTo(r.url,'Ouvrir la convocation (PDF) à imprimer')+'<label>Message (modifiable)</label><textarea id="cv_txt" dir="auto">'+esc(r.texte)+'</textarea>'+
+      '<a class="btn wa" id="cv_wa" target="_blank" href="#">Ouvrir WhatsApp et choisir le groupe</a>';
+    function l(){ $('cv_wa').href = waLink('', $('cv_txt').value); } $('cv_txt').oninput=l; l();
+  }));
+}
+function convEnvoyee(id){ guard(readFile($('cv_preuve')).then(function(f){ return api('reunion.convocationEnvoyee',{id:id, preuve:f}); }).then(function(){ go('reunion',id); })); }
+function secondeAG(id){ guard(api('reunion.secondeAG',{id:id, date:$('ag2_date').value, heure:$('ag2_heure').value}).then(function(r){ go('reunion', r.id); })); }
+function addDecision(id){
+  guard(api('decision.creer',{reunion:id, decision:$('dc_txt').value, majorite:$('dc_maj').value, pour:$('dc_pour').value, contre:$('dc_contre').value, abstention:$('dc_abs').value,
+    adoptee:$('dc_adopt').value, responsable:$('dc_resp').value, echeance:$('dc_ech').value}).then(function(){ go('reunion',id); }));
+}
+function genPv(id, ag){
+  var p={id:id}; if(ag){ p.presidentSeance=$('pv_pres').value; p.secretaireSeance=$('pv_secr').value; }
+  guard(api('reunion.pv',p).then(function(r){ $('pv_out').innerHTML = '<p>'+linkTo(r.url,'Ouvrir le PV (PDF)')+' : imprimez-le, faites-le signer, puis déposez le scan ci-dessous.</p>'; }));
+}
+function pvSigne(id){ guard(readFile($('pv_file')).then(function(f){ if(!f) throw new Error('Ajoutez le PV signé.'); return api('reunion.pvSigne',{id:id, fichier:f, publier:$('pv_pub').checked}); }).then(function(){ go('reunion',id); })); }
+function pvMessage(id){
+  guard(api('reunion.pvMessage',{id:id, langue:$('pn_lang').value}).then(function(r){
+    $('pn_out').innerHTML = '<textarea id="pn_txt" dir="auto">'+esc(r.texte)+'</textarea><a class="btn wa" id="pn_wa" target="_blank" href="#">Ouvrir WhatsApp et choisir le groupe</a>';
+    function l(){ $('pn_wa').href = waLink('', $('pn_txt').value); } $('pn_txt').oninput=l; l();
+  }));
+}
+function pvNotifie(id){ guard(readFile($('pn_preuve')).then(function(f){ return api('reunion.pvNotifie',{id:id, preuve:f}); }).then(function(){ go('reunion',id); })); }
+function annulerReunion(id){
+  var b = document.querySelector('.btn.danger');
+  if(b.getAttribute('data-c')!=='1'){ b.setAttribute('data-c','1'); b.textContent='Confirmer l\'annulation ?'; return; }
+  guard(api('reunion.modifier',{id:id, statut:'annulée'}).then(function(){ go('reunions'); }));
+}
+
+// ---------- Présences ----------
+ROUTES.presences = function(id){
+  guard(api('reunion.presences',{id:id}).then(function(data){
+    var r=data.reunion, L=data.lignes, ed=canEditMeetings();
+    var h = '<div class="card"><b>'+esc(r.type)+'</b> du '+esc(r.dateFr)+'<div id="pr_count" class="big" style="font-size:22px;margin-top:8px"></div>'+
+      (r.ag?'<p class="muted">Quorum : la moitié des copropriétaires présents ou représentés (art. 18). Un mandataire : 3 procurations au maximum (art. 16 decies). ⚠ = copropriétaire non à jour, non admis à l\'AG (art. 16 quinquies).</p>':'')+
+      (ed?'<input id="pr_search" type="text" placeholder="Rechercher un appartement ou un nom">':'')+'</div><div class="card list" id="pr_list">'+
+      L.map(function(l,i){
+        return '<div class="item" data-q="'+esc((l.id+' '+l.nom).toLowerCase())+'"><b>'+esc(l.id)+'</b> – '+esc(l.nom)+(r.ag&&l.debiteur?' <span class="st-retard">⚠ '+dh(l.du)+'</span>':'')+
+          (ed?'<div class="row"><select data-i="'+i+'" class="pr_sel" style="width:auto">'+['absent','présent','représenté'].map(function(o){return '<option'+(o===l.presence?' selected':'')+'>'+o+'</option>';}).join('')+'</select>'+
+            '<input data-i="'+i+'" class="pr_rep" type="text" placeholder="Représenté par (nom)" value="'+esc(l.representePar||'')+'" style="flex:1;'+(l.presence==='représenté'?'':'display:none')+'"></div>'
+            :'<br><span class="muted">'+esc(l.presence)+(l.representePar?' par '+esc(l.representePar):'')+'</span>')+'</div>';
+      }).join('')+'</div>'+
+      (ed?(r.ag?'<div class="card"><label>Président de séance (pas le syndic)</label><input id="pr_pres" type="text" value="'+esc(r.presidentSeance||'')+'"><label>Secrétaire de séance</label><input id="pr_secr" type="text" value="'+esc(r.secretaireSeance||'')+'"></div>':'')+
+        '<button class="btn pri" id="pr_save">Enregistrer les présences</button>':'')+
+      '<button class="btn sec" onclick="go(\'reunion\',\''+esc(id)+'\')">Retour à la réunion</button>';
+    view('Présences', h);
+    function count(){
+      var p=0,rep=0; L.forEach(function(l){ if(l.presence==='présent')p++; if(l.presence==='représenté')rep++; });
+      var need=Math.ceil(L.length/2);
+      $('pr_count').innerHTML = (p+rep)+' / '+L.length+(r.ag?' · quorum '+((p+rep)>=need||r.liee?'<span class="st-a_jour">atteint</span>':'<span class="st-retard">non atteint ('+need+' requis)</span>'):'');
+    }
+    count();
+    if(!ed) return;
+    Array.prototype.forEach.call(document.querySelectorAll('.pr_sel'), function(s){ s.onchange=function(){
+      var i=+s.getAttribute('data-i'); L[i].presence=s.value; document.querySelector('.pr_rep[data-i="'+i+'"]').style.display = s.value==='représenté'?'':'none'; count(); }; });
+    Array.prototype.forEach.call(document.querySelectorAll('.pr_rep'), function(x){ x.oninput=function(){ L[+x.getAttribute('data-i')].representePar=x.value; }; });
+    $('pr_search').oninput=function(){ var q=this.value.toLowerCase(); Array.prototype.forEach.call(document.querySelectorAll('#pr_list .item'), function(it){ it.style.display = it.getAttribute('data-q').indexOf(q)>=0?'':'none'; }); };
+    $('pr_save').onclick=function(){
+      guard(api('reunion.presencesEnregistrer',{id:id, lignes:L.map(function(l){ return {id:l.id, presence:l.presence, representePar:l.representePar}; }),
+        presidentSeance:$('pr_pres')&&$('pr_pres').value, secretaireSeance:$('pr_secr')&&$('pr_secr').value}).then(function(v){
+        go('reunion', id);
+        if(v.debiteursPresents && v.debiteursPresents.length && r.ag) setTimeout(function(){ showErr('Attention : copropriétaire(s) non à jour inscrit(s) présent(s) ou représenté(s) : '+v.debiteursPresents.join(', ')+'. La loi prévoit qu\'ils ne sont pas admis (art. 16 quinquies).'); }, 600);
+      }));
+    };
+  }));
+};
+
+// ---------- Décisions ----------
+ROUTES.decisions = function(){
+  guard(api('decisions.liste').then(function(list){
+    var ed=canEditMeetings();
+    view('Registre des décisions', list.length?list.map(function(x){
+      return '<div class="card"><b>'+esc(x.id)+'</b> · '+esc(x.date)+' · '+esc(x.reunion)+'<br>'+esc(x.decision)+
+        '<br><span class="muted">'+(x.adoptee==='oui'?'adoptée':x.adoptee==='non'?'rejetée':'sans vote')+(x.responsable?' · resp. '+esc(x.responsable):'')+(x.echeance?' · avant le '+esc(x.echeance):'')+'</span>'+
+        '<br>Statut : <b>'+esc(x.statut)+'</b>'+(x.suivi?'<p class="muted">'+esc(x.suivi).replace(/\n/g,'<br>')+'</p>':'')+
+        (ed&&x.adoptee!=='non'?'<div class="row"><select id="ds_'+esc(x.id)+'" style="width:auto">'+opt(['à faire','en cours','fait','sans suite'],x.statut)+'</select>'+
+          '<input id="dn_'+esc(x.id)+'" type="text" placeholder="Note de suivi" style="flex:1"><button class="btn small pri" onclick="majDecision(\''+esc(x.id)+'\')">OK</button></div>':'')+'</div>';
+    }).join(''):'<div class="card muted">Aucune décision enregistrée. Les décisions s\'ajoutent depuis une réunion.</div>');
+  }));
+};
+function majDecision(id){ guard(api('decision.maj',{id:id, statut:$('ds_'+id).value, suivi:$('dn_'+id).value}).then(function(){ go('decisions'); })); }
+
+// ---------- Incidents ----------
+ROUTES.incidents = function(){
+  guard(api('incidents.liste').then(function(list){
+    var ed=has('tresorier','secretaire');
+    view('Incidents et travaux', (ed?'<details class="card"><summary class="btn pri">＋ Signaler un incident / des travaux</summary>'+
+      '<label>Titre</label><input id="in_t" type="text" placeholder="ex. Panne de l\'ascenseur"><label>Description</label><textarea id="in_d" style="min-height:80px"></textarea>'+
+      '<label>Lieu</label><input id="in_l" type="text" placeholder="ex. 3e étage"><label>Prestataire (facultatif)</label><input id="in_p" type="text">'+
+      '<label>Coût estimé (DH, facultatif)</label><input id="in_c" type="number">'+fileField('in_f','Photo')+
+      '<button class="btn pri" id="in_save">Enregistrer</button></details>':'')+
+      (list.length?list.map(function(x){
+        var st = x.statut==='clos'?'<span class="st-a_jour">Clos le '+esc(x.clos)+'</span>':x.statut==='en cours'?'<span class="st-avance">En cours</span>':'<span class="st-retard">Ouvert</span>';
+        return '<div class="card"><b>'+esc(x.titre)+'</b> · '+st+'<br><span class="muted">'+esc(x.id)+' · '+esc(x.date)+(x.lieu?' · '+esc(x.lieu):'')+(x.prestataire?' · '+esc(x.prestataire):'')+(x.cout?' · '+dh(x.cout):'')+'</span>'+
+          (x.description?'<br>'+esc(x.description):'')+(x.photos.length?'<br>'+x.photos.map(function(p,i){return linkTo(p,'📷 photo '+(i+1));}).join(' · '):'')+
+          (x.depenses?'<br><span class="muted">Dépenses liées : '+esc(x.depenses)+'</span>':'')+(x.suivi?'<p class="muted">'+esc(x.suivi).replace(/\n/g,'<br>')+'</p>':'')+
+          (ed&&x.statut!=='clos'?'<details><summary class="btn small sec" style="display:inline-block">Mettre à jour</summary><label>Statut</label><select id="is_'+x.id+'">'+opt(['ouvert','en cours','clos'],x.statut)+'</select>'+
+            '<label>Note</label><input id="ino_'+x.id+'" type="text"><label>N° de dépense liée (facultatif)</label><input id="ind_'+x.id+'" type="text" placeholder="ex. D-2027-0012">'+
+            fileField('inf_'+x.id,'Photo')+'<button class="btn small pri" onclick="majIncident(\''+x.id+'\')">Enregistrer</button></details>':'')+'</div>';
+      }).join(''):'<div class="card muted">Aucun incident enregistré.</div>'));
+    if(ed) $('in_save').onclick=function(){
+      guard(readFile($('in_f')).then(function(f){ return api('incident.creer',{titre:$('in_t').value, description:$('in_d').value, lieu:$('in_l').value, prestataire:$('in_p').value, cout:$('in_c').value, photo:f}); }).then(function(){ go('incidents'); }));
+    };
+  }));
+};
+function majIncident(id){
+  guard(readFile($('inf_'+id)).then(function(f){ return api('incident.maj',{id:id, statut:$('is_'+id).value, note:$('ino_'+id).value, depense:$('ind_'+id).value, photo:f}); }).then(function(){ go('incidents'); }));
+}
+
+// ---------- Contrats ----------
+ROUTES.contrats = function(){
+  guard(api('contrats.liste').then(function(list){
+    var ed=has('secretaire');
+    window.__contrats = list;
+    view('Contrats et prestataires', (ed?'<button class="btn pri" onclick="contratForm()">＋ Ajouter un contrat</button>':'')+
+      (list.length?list.map(function(c){
+        return '<div class="card"><b>'+esc(c.prestataire)+'</b> – '+esc(c.objet)+(c.actif?'':' <span class="muted">(inactif)</span>')+
+          '<br><span class="muted">'+(c.montant?dh(c.montant)+(c.periodicite?' / '+esc(c.periodicite):''):'')+(c.contact?' · '+esc(c.contact):'')+(c.tel?' · '+esc(c.tel):'')+'</span>'+
+          (c.echeanceFr?'<br>Échéance : <b class="'+(c.bientot?'st-retard':'')+'">'+esc(c.echeanceFr)+'</b>'+(c.preavis?' (préavis '+esc(c.preavis)+' j)':''):'')+
+          (c.document?'<br>'+linkTo(c.document,'📄 contrat'):'')+(c.notes?'<br><span class="muted">'+esc(c.notes)+'</span>':'')+
+          (ed?'<br><button class="btn small sec" onclick="contratForm(\''+esc(c.id)+'\')">Modifier</button>':'')+'</div>';
+      }).join(''):'<div class="card muted">Aucun contrat enregistré.</div>'));
+  }));
+};
+function contratForm(id){
+  var c = id ? (window.__contrats||[]).filter(function(x){return x.id===id;})[0] : {actif:true};
+  view(id?'Modifier le contrat':'Nouveau contrat', '<div class="card">'+
+    '<label>Prestataire</label><input id="ct_p" type="text" value="'+esc(c.prestataire||'')+'"><label>Objet</label><input id="ct_o" type="text" value="'+esc(c.objet||'')+'" placeholder="ex. Entretien ascenseur">'+
+    '<label>Contact</label><input id="ct_c" type="text" value="'+esc(c.contact||'')+'"><label>Téléphone</label><input id="ct_t" type="tel" value="'+esc(c.tel||'')+'">'+
+    '<label>Montant (DH)</label><input id="ct_m" type="number" value="'+esc(c.montant||'')+'"><label>Périodicité</label><select id="ct_per">'+opt(['mensuel','trimestriel','annuel','ponctuel'],c.periodicite||'mensuel')+'</select>'+
+    '<label>Début</label><input id="ct_d" type="date" value="'+esc(c.debut||'')+'"><label>Échéance</label><input id="ct_e" type="date" value="'+esc(c.echeance||'')+'">'+
+    '<label>Préavis de résiliation (jours)</label><input id="ct_pr" type="number" value="'+esc(c.preavis||'')+'">'+
+    '<label>Notes</label><input id="ct_n" type="text" value="'+esc(c.notes||'')+'">'+fileField('ct_doc','Document du contrat (PDF ou photo)')+
+    '<label><input type="checkbox" id="ct_a" style="width:auto"'+(c.actif?' checked':'')+'> Contrat actif</label>'+
+    '<button class="btn pri" id="ct_save">Enregistrer</button></div><button class="btn sec" onclick="go(\'contrats\')">Retour</button>');
+  $('ct_save').onclick=function(){
+    guard(readFile($('ct_doc')).then(function(f){
+      return api('contrat.enregistrer',{id:id||'', prestataire:$('ct_p').value, objet:$('ct_o').value, contact:$('ct_c').value, tel:$('ct_t').value, montant:$('ct_m').value,
+        periodicite:$('ct_per').value, debut:$('ct_d').value, echeance:$('ct_e').value, preavis:$('ct_pr').value, notes:$('ct_n').value, actif:$('ct_a').checked, document:f});
+    }).then(function(){ go('contrats'); }));
+  };
+}
+
+// ---------- Projets et travaux prévus ----------
+var STATUTS_PROJET = ['à l\'étude','devis en cours','à voter en AG','voté','en cours','terminé','abandonné'];
+function canEditProjects(){ return has('secretaire','tresorier'); }
+ROUTES.projets = function(){
+  guard(api('projets.liste').then(function(list){
+    window.__projets = list;
+    var ed = canEditProjects();
+    view('Projets et travaux prévus', (ed?'<button class="btn pri" onclick="projetForm()">＋ Nouveau projet ou travaux</button>':'')+
+      '<p class="muted">Les projets « visibles » apparaissent sur la page des copropriétaires, avec leurs devis.</p>'+
+      (list.length?'<div class="card list">'+list.map(function(p){
+        var nonRetenus = p.devis.filter(function(x){ return !x.retenu; });
+        return projetCard({titre:p.titre, description:p.description, statut:p.statut, date:p.dateFr, budget:p.budget, termine:p.termine, devis:p.devis}, true)+
+          '<div class="muted" style="margin:-6px 0 8px">'+(p.visible?'👁 visible par les copropriétaires':'🔒 interne au bureau')+(p.decision?' · décision '+esc(p.decision):'')+'</div>'+
+          (ed?'<div class="row" style="margin-bottom:10px"><button class="btn small sec" onclick="projetForm(\''+esc(p.id)+'\')">Modifier</button><button class="btn small sec" onclick="devisForm(\''+esc(p.id)+'\')">＋ Ajouter un devis</button>'+
+            nonRetenus.map(function(x){ return '<button class="btn small sec" onclick="retenirDevis(\''+esc(x.id)+'\')">Retenir '+esc(x.prestataire)+'</button>'; }).join('')+'</div>':'');
+      }).join('')+'</div>':'<div class="card muted">Aucun projet pour le moment.</div>'));
+  }));
+};
+function projetForm(id){
+  var p = id ? (window.__projets||[]).filter(function(x){return x.id===id;})[0] : {visible:true, statut:'à l\'étude'};
+  view(id?'Modifier le projet':'Nouveau projet', '<div class="card">'+
+    '<label>Titre</label><input id="pj_t" type="text" value="'+esc(p.titre||'')+'" placeholder="ex. Peinture de la façade">'+
+    '<label>Description</label><textarea id="pj_d" style="min-height:90px">'+esc(p.description||'')+'</textarea>'+
+    '<label>Statut</label><select id="pj_s">'+opt(STATUTS_PROJET, p.statut)+'</select>'+
+    '<label>Date prévue (facultatif)</label><input id="pj_date" type="date" value="'+esc(p.date||'')+'">'+
+    '<label>Budget estimé (DH, facultatif)</label><input id="pj_b" type="number" value="'+esc(p.budget||'')+'">'+
+    '<label>Décision d\'AG liée (n°, facultatif)</label><input id="pj_dec" type="text" value="'+esc(p.decision||'')+'" placeholder="ex. DEC-2027-0003">'+
+    '<label><input type="checkbox" id="pj_v" style="width:auto"'+(p.visible?' checked':'')+'> Visible par les copropriétaires</label>'+
+    '<button class="btn pri" id="pj_save">Enregistrer</button></div><button class="btn sec" onclick="go(\'projets\')">Retour</button>');
+  $('pj_save').onclick=function(){
+    guard(api('projet.enregistrer',{id:id||'', titre:$('pj_t').value, description:$('pj_d').value, statut:$('pj_s').value, date:$('pj_date').value,
+      budget:$('pj_b').value, decision:$('pj_dec').value, visible:$('pj_v').checked}).then(function(){ go('projets'); }));
+  };
+}
+function devisForm(projetId){
+  var p = (window.__projets||[]).filter(function(x){return x.id===projetId;})[0] || {};
+  view('Ajouter un devis', '<div class="card"><p><b>'+esc(p.titre||'')+'</b></p>'+
+    '<label>Prestataire</label><input id="dv_p" type="text"><label>Montant (DH)</label><input id="dv_m" type="number" inputmode="decimal">'+
+    '<label>Date du devis</label><input id="dv_d" type="date" value="'+today()+'"><label>Notes (facultatif)</label><input id="dv_n" type="text" placeholder="ex. délai 3 semaines, garantie 2 ans">'+
+    fileField('dv_f','Devis (PDF ou photo)','Il sera visible par les copropriétaires si le projet est visible.')+
+    '<button class="btn pri" id="dv_save">Enregistrer le devis</button></div><button class="btn sec" onclick="go(\'projets\')">Retour</button>');
+  $('dv_save').onclick=function(){
+    guard(readFile($('dv_f')).then(function(f){
+      return api('devis.ajouter',{projet:projetId, prestataire:$('dv_p').value, montant:$('dv_m').value, date:$('dv_d').value, notes:$('dv_n').value, document:f});
+    }).then(function(){ go('projets'); }));
+  };
+}
+function retenirDevis(id){ guard(api('devis.retenir',{id:id}).then(function(){ go('projets'); })); }
+</script>
+
+<script>
+// =====================================================================
+// Tableau de bord global, fiche appartement, espaces Trésorerie / Secrétariat / Admin
+// =====================================================================
+
+var SYMB = { P:'✓', A:'✓', H:'½', R:'✗', C:'•', F:'' };
+var CODE_LABEL = { P:'Payé', A:'Payé d\'avance', H:'Partiel', R:'En retard', C:'À payer ce mois', F:'À venir' };
+
+function rowlink(route, ico, title, sub, arg, href){
+  var on = href ? 'window.open(\''+esc(href)+'\',\'_blank\')' : 'go(\''+route+'\''+(arg?',\''+esc(arg)+'\'':'')+')';
+  return '<div class="rowlink" onclick="'+on+'"><span class="ico">'+ico+'</span><div><b>'+esc(title)+'</b>'+(sub?'<span class="muted">'+esc(sub)+'</span>':'')+'</div><span class="arrow">›</span></div>';
+}
+function legend(){
+  return '<div class="legend">'+['P','A','H','C','R'].map(function(c){ return '<span><i class="c c-'+c+'">'+SYMB[c]+'</i>'+CODE_LABEL[c]+'</span>'; }).join('')+'</div>';
+}
+
+// ---------- Tableau de bord ----------
+ROUTES.dashboard = function(filtre){
+  guard(api('dashboard.global').then(function(d){ S.dash=d; renderDashboard(d, filtre||'tous'); }));
+};
+ROUTES.tableau = function(){ go('dashboard'); };
+ROUTES.appartements = function(){ go('dashboard','retard'); };
+
+/** Accueil personnalisé : le rôle de la personne et ce qui l'attend aujourd'hui, avec un bouton pour y aller. */
+function accueil(d){
+  var r = S.me.roles||[], k = d.kpi, lignes = [];
+  var noms = { president:'Syndic', tresorier:'Trésorerie', secretaire:'Secrétariat', admin:'Administration' };
+  var fonctions = ['president','tresorier','secretaire','admin'].filter(function(x){ return r.indexOf(x)>=0; }).map(function(x){ return noms[x]; });
+  function ligne(txt, route, bouton){ lignes.push('<li>'+txt+(route?' <button class="btn small pri" onclick="go(\''+route+'\')">'+bouton+'</button>':'')+'</li>'); }
+  if(r.indexOf('tresorier')>=0 || r.indexOf('admin')>=0){
+    if(S.me.signalements) ligne('<b>'+S.me.signalements+'</b> paiement'+(S.me.signalements>1?'s':'')+' signalé'+(S.me.signalements>1?'s':'')+' par les résidents, à vérifier.', 'signalements', 'Vérifier');
+    if(k.enRetard) ligne('<b>'+k.enRetard+'</b> appartement'+(k.enRetard>1?'s':'')+' en retard de paiement.', 'relances', 'Relancer');
+  }
+  if(r.indexOf('secretaire')>=0 || r.indexOf('admin')>=0){
+    if(S.me.demandes) ligne('<b>'+S.me.demandes+'</b> demande'+(S.me.demandes>1?'s':'')+' de résidents à traiter.', 'demandes', 'Répondre');
+    var reu = (d.evenements||[]).filter(function(e){ return e.kind==='reunion'; })[0];
+    if(reu) ligne('Prochaine réunion : <b>'+esc(reu.date)+'</b> ('+esc(reu.label)+').', 'reunions', 'Voir');
+  }
+  if(r.indexOf('admin')>=0 && d.taches) ligne('<b>'+d.taches+'</b> tâche'+(d.taches>1?'s':'')+' à suivre pour tout le bureau.', 'afaire', 'Voir la liste');
+  if(!fonctions.length) lignes.push('<li>Vous pouvez tout consulter : les chiffres, les paiements, les réunions. Vous ne modifiez rien.</li>');
+  if(!lignes.length) lignes.push('<li>Rien d’urgent aujourd’hui.</li>');
+  return '<div class="card accueil"><div class="big" style="font-size:24px">Bonjour '+esc(S.me.nom)+'</div>'+
+    '<p class="muted" style="margin:2px 0 8px">'+(fonctions.length ? 'Votre rôle : '+esc(fonctions.join(' et ')) : 'Membre du bureau (consultation)')+
+    (S.me.apt?' · vous habitez l’appartement '+esc(S.me.apt):'')+'</p><ul class="accueil-l">'+lignes.join('')+'</ul></div>';
+}
+function renderDashboard(d, filtre){
+  var k = d.kpi;
+  var h = accueil(d)+
+    '<div class="kpis" style="margin-bottom:14px">'+
+      '<div class="kpi">Solde du compte<b>'+dh(k.solde)+'</b></div>'+
+      '<div class="kpi click" onclick="renderDashboard(S.dash,\'retard\');setTimeout(function(){$(\'grille\').scrollIntoView({behavior:\'smooth\'});},50)">À jour<b>'+k.ajour+' / '+k.total+'</b><span class="muted">'+k.enRetard+' en retard ›</span></div>'+
+      '<div class="kpi">Reste à encaisser<b class="'+(k.totalDu>0?'st-retard':'')+'">'+dh(k.totalDu)+'</b></div>'+
+      '<div class="kpi click" onclick="go(\'afaire\')">À faire<b>'+d.taches+'</b><span class="muted">voir la liste ›</span></div>'+
+    '</div>'+
+    (k.baseLegaleManquante?'<div class="card" style="border-color:#f59e0b">⚠ Le document qui fixe la cotisation (règlement ou PV d\'AG) n\'est pas renseigné.</div>':'')+
+    '<div class="card"><div class="h2">Encaissements et dépenses, mois par mois</div>'+chart(d.serie)+
+      '<div class="legend"><span><i class="c c-P"></i>Encaissé</span><span><i class="c c-R"></i>Dépensé</span><span><i style="display:inline-block;width:18px;height:3px;background:#2c4f7c"></i>Solde du compte</span></div>'+
+      '<div class="muted">Ce mois-ci : encaissé '+dh(k.encMois)+' · dépensé '+dh(k.depMois)+'</div></div>'+
+    '<div class="card"><div class="h2">Prochaines échéances</div>'+(d.evenements.length?'<div class="tl">'+d.evenements.map(function(e){
+      return '<div class="ev"><span class="dot '+e.kind+(e.overdue?' late':'')+'"></span><div><b>'+esc(e.date)+'</b>'+(e.overdue?' <span class="st-retard">en retard</span>':'')+'<br><span class="muted">'+esc(e.label)+'</span></div></div>';
+    }).join('')+'</div>':'<p class="muted">Rien de prévu dans les 60 prochains jours.</p>')+'</div>'+
+    '<div class="card" id="grille"><div class="h2">État des paiements</div>'+legend()+
+      '<div class="row" style="margin:8px 0"><span class="chip" data-f="tous">Tous ('+d.grille.rows.length+')</span><span class="chip" data-f="retard">En retard ('+k.enRetard+')</span><span class="chip" data-f="avance">Payé d\'avance</span></div>'+
+      '<input id="g_q" type="text" placeholder="Rechercher un appartement ou un nom" style="margin-bottom:8px">'+
+      '<div class="gridwrap" id="g_tab"></div><p class="muted">Touchez une ligne pour voir le détail de l\'appartement.</p></div>'+
+    catCard(d)+
+    '<div class="space-list"><div class="h2">Consulter</div>'+
+      rowlink('mouvements','📒','Mouvements du compte','Toutes les entrées et sorties, avec les pièces')+
+      rowlink('etats','📘','États annuels et budget','Annexes 10, 11, 12 du décret')+
+      rowlink('reunions','📅','Réunions et AG','Convocations, présences, PV')+
+      rowlink('decisions','📜','Registre des décisions','')+
+      rowlink('projets','🏗️','Projets et travaux prévus','Avec les devis')+
+      rowlink('incidents','🛠️','Incidents et travaux','')+
+      rowlink('contrats','📄','Contrats et prestataires','')+
+      ((S.me.roles||[]).indexOf('president')>=0?rowlink('journal','','Journal des actions','Qui a fait quoi, et quand'):'')+
+      (d.page?rowlink('', '🌐','Page des copropriétaires','', '', d.page):'')+
+    '</div>';
+  view('Tableau de bord', h);
+  var state = { f: filtre, q: '' };
+  function draw(){ $('g_tab').innerHTML = gridTable(d.grille, state.f, state.q);
+    Array.prototype.forEach.call(document.querySelectorAll('.chip[data-f]'), function(c){ c.style.background = c.getAttribute('data-f')===state.f ? 'var(--pri)' : '#fff'; c.style.color = c.getAttribute('data-f')===state.f ? '#fff' : 'var(--pri)'; });
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('.chip[data-f]'), function(c){ c.onclick=function(){ state.f=c.getAttribute('data-f'); draw(); }; });
+  $('g_q').oninput = function(){ state.q=this.value.toLowerCase(); draw(); };
+  draw();
+}
+
+function gridTable(g, f, q){
+  var rows = g.rows.filter(function(r){
+    if(f==='retard' && r.statut!=='retard') return false;
+    if(f==='avance' && r.statut!=='avance') return false;
+    if(q && (r.id+' '+r.nom).toLowerCase().indexOf(q)<0) return false;
+    return true;
+  });
+  if(!rows.length) return '<p class="muted">Aucun appartement.</p>';
+  var initials = g.months.map(function(m){ var lbl=m.label; return '<th title="'+esc(lbl)+'">'+esc(lbl.charAt(0).toUpperCase())+'<br><span style="font-weight:400">'+esc(lbl.slice(-2))+'</span></th>'; }).join('');
+  var anyBefore = rows.some(function(r){ return r.avant; });
+  return '<table class="grid"><tr><th></th>'+(anyBefore?'<th title="Avant la période affichée">Av.</th>':'')+initials+'<th>Dû</th></tr>'+rows.map(function(r){
+    return '<tr onclick="go(\'appart\',\''+esc(r.id)+'\')"><td class="who"><b>'+esc(r.id)+'</b> '+esc(r.nom)+'</td>'+
+      (anyBefore?'<td><div class="c c-'+(r.avant||'F')+'">'+(r.avant?SYMB.R:'')+'</div></td>':'')+
+      r.cells.map(function(c, i){ return '<td><div class="c c-'+c+'" title="'+esc(g.months[i].label+' : '+(CODE_LABEL[c]||''))+'">'+(SYMB[c]||'')+'</div></td>'; }).join('')+
+      '<td style="white-space:nowrap" class="'+(r.du>0?'st-retard':'muted')+'">'+(r.du>0?dh(r.du):'—')+'</td></tr>';
+  }).join('')+'</table>';
+}
+
+function chart(serie){
+  if(!serie || !serie.length) return '';
+  var W=640, H=230, pl=46, pr=10, pt=12, pb=34, n=serie.length;
+  var maxV = Math.max(1, Math.max.apply(null, serie.map(function(s){ return Math.max(s.enc, s.dep); })));
+  var soldes = serie.map(function(s){ return s.solde; });
+  var sMin = Math.min(0, Math.min.apply(null, soldes)), sMax = Math.max(1, Math.max.apply(null, soldes));
+  var cw = (W-pl-pr)/n, bw = Math.max(4, cw*0.32);
+  var y = function(v){ return pt + (H-pt-pb) * (1 - v/maxV); };
+  var ys = function(v){ return pt + (H-pt-pb) * (1 - (v-sMin)/(sMax-sMin)) ; };
+  var parts = [];
+  [0, 0.5, 1].forEach(function(t){ var v=maxV*t, yy=y(v); parts.push('<line x1="'+pl+'" x2="'+(W-pr)+'" y1="'+yy+'" y2="'+yy+'" stroke="#e5e9ed"/><text x="'+(pl-6)+'" y="'+(yy+4)+'" font-size="11" text-anchor="end" fill="#5b6670">'+Math.round(v/1000)+'k</text>'); });
+  var line = [];
+  serie.forEach(function(s, i){
+    var x0 = pl + i*cw + cw/2;
+    parts.push('<rect x="'+(x0-bw-1)+'" y="'+y(s.enc)+'" width="'+bw+'" height="'+(H-pb-y(s.enc))+'" rx="2" fill="#2f6b3a"><title>'+esc(s.label)+' – encaissé '+dh(s.enc)+'</title></rect>');
+    parts.push('<rect x="'+(x0+1)+'" y="'+y(s.dep)+'" width="'+bw+'" height="'+(H-pb-y(s.dep))+'" rx="2" fill="#a42a1e"><title>'+esc(s.label)+' – dépensé '+dh(s.dep)+'</title></rect>');
+    if(i%2===0 || n<=6) parts.push('<text x="'+x0+'" y="'+(H-pb+16)+'" font-size="11" text-anchor="middle" fill="#5b6670">'+esc(s.label)+'</text>');
+    line.push(x0+','+ys(s.solde));
+  });
+  parts.push('<polyline points="'+line.join(' ')+'" fill="none" stroke="#2c4f7c" stroke-width="2"/>');
+  var last = serie[n-1];
+  parts.push('<text x="'+(W-pr)+'" y="'+Math.max(12, ys(last.solde)-8)+'" font-size="12" text-anchor="end" fill="#2c4f7c" font-weight="700">'+dh(last.solde)+'</text>');
+  return '<svg viewBox="0 0 '+W+' '+H+'" width="100%" role="img" aria-label="Encaissements, dépenses et solde sur 12 mois">'+parts.join('')+'</svg>';
+}
+
+function catCard(d){
+  var cats = Object.keys(d.parCategorie).filter(function(c){ return d.parCategorie[c]>0; }).sort(function(a,b){ return d.parCategorie[b]-d.parCategorie[a]; });
+  if(!cats.length) return '';
+  var max = d.parCategorie[cats[0]];
+  return '<div class="card"><div class="h2">Dépenses '+d.kpi.annee+' par catégorie</div>'+cats.map(function(c){
+    var v=d.parCategorie[c];
+    return '<div style="margin:6px 0"><div style="display:flex;justify-content:space-between;font-size:15px"><span>'+esc(c)+'</span><b>'+dh(v)+'</b></div>'+
+      '<div style="background:#eef1f4;border-radius:6px;height:10px"><div style="width:'+Math.max(2,Math.round(v/max*100))+'%;height:10px;border-radius:6px;background:#0b6e4f"></div></div></div>';
+  }).join('')+'</div>';
+}
+
+// ---------- Fiche appartement ----------
+ROUTES.appart = function(id){
+  guard(api('appartement.detail',{id:id}).then(function(a){
+    var st = {retard:'En retard', a_jour:'À jour', avance:'Payé d\'avance'}[a.statut];
+    var h = '<button class="btn sec" style="margin-top:0" onclick="go(\'dashboard\')">‹ Retour au tableau de bord</button>'+
+      '<div class="card"><div class="big" style="font-size:24px">'+esc(a.id)+' – '+esc(a.payeur)+'</div>'+
+      '<span class="st-'+a.statut+'" style="font-size:20px">'+st+'</span>'+
+      '<div class="kpis" style="margin-top:12px"><div class="kpi">Reste dû<b class="'+(a.du>0?'st-retard':'')+'">'+dh(a.du)+'</b>'+(a.retard?'<span class="muted">'+a.retard+' mois de retard</span>':'')+'</div>'+
+      '<div class="kpi">Payé jusqu\'à<b style="font-size:18px">'+esc(a.payeJusqua)+'</b>'+(a.avance>0?'<span class="muted">avance '+dh(a.avance)+'</span>':'')+'</div></div>';
+    if(a.actions && a.actions.paiement){
+      h += '<button class="btn pri" onclick="go(\'paiement\',\''+esc(a.id)+'\')">💰 Enregistrer un paiement</button>'+
+        (a.actions.relance1?'<div class="row"><a class="btn small wa" target="_blank" href="'+esc(a.actions.relance1)+'">Rappel amical</a><a class="btn small wa" target="_blank" href="'+esc(a.actions.relance2)+'">Second rappel</a><button class="btn small sec" onclick="go(\'relances\')">Plus d\'options…</button></div>':'')+
+        '<a class="btn sec" target="_blank" href="'+esc(a.actions.releve)+'">Envoyer son relevé par WhatsApp</a>'+
+        '<button class="btn sec" onclick="lienCopro(\''+esc(a.id)+'\')">🔗 Lien copropriétaire (consultation)</button><div id="copro_out"></div>';
+      h += '<button class="btn sec" onclick="accesAppart(\''+esc(a.id)+'\')">Personnes ayant accès à cet appartement</button><div id="acc_out"></div>';
+    }
+    h += '</div>';
+    h += '<div class="card"><div class="h2">Mois par mois</div>'+legend()+'<div class="mchips">'+a.mois.map(function(m){
+      return '<span class="c c-'+m.code+'" title="'+esc(CODE_LABEL[m.code]||'')+' – payé '+dh(m.paye)+' sur '+dh(m.montant)+'">'+esc(m.label)+' '+(SYMB[m.code]||'')+'</span>';
+    }).join('')+'</div></div>';
+    h += '<div class="card"><div class="h2">Derniers paiements</div>'+(a.paiements.length?'<div class="list">'+a.paiements.slice(0,24).map(function(p){
+      var cancelled = p.statut!=='valide';
+      return '<div class="item"'+(cancelled?' style="opacity:.6"':'')+'><b>'+esc(p.date)+'</b> · <b>'+dh(p.montant)+'</b> · '+esc(p.mode||'')+(cancelled?' · <span class="st-retard">'+esc(p.statut)+'</span>':'')+
+        '<br><span class="muted">'+esc(p.mois||'')+' · n° '+esc(p.numero)+'</span>'+
+        (p.recu?' · <a target="_blank" href="'+esc(p.recu)+'">reçu</a>':'')+(p.preuve?' · <a target="_blank" href="'+esc(p.preuve)+'">preuve</a>':'')+'</div>';
+    }).join('')+'</div>':'<p class="muted">Aucun paiement enregistré depuis le démarrage de l\'outil.</p>')+'</div>';
+    h += '<div class="card"><div class="h2">Relances</div>'+(a.relances.length?'<div class="list">'+a.relances.map(function(r){
+      return '<div class="item">'+esc(r.date)+' · niveau '+r.niveau+' · '+esc(r.canal||'')+(r.preuve?' · <a target="_blank" href="'+esc(r.preuve)+'">preuve</a>':' · <span class="muted">sans preuve</span>')+(r.document?' · <a target="_blank" href="'+esc(r.document)+'">lettre</a>':'')+'</div>';
+    }).join('')+'</div>':'<p class="muted">Aucune relance.</p>')+'</div>';
+    h += '<div class="card"><div class="h2">Coordonnées</div>'+
+      '<p><b>Propriétaire</b> : '+esc(a.proprietaire)+(a.telProprietaire?'<br>📞 '+esc(a.telProprietaire):'')+(a.emailProprietaire?'<br>✉ '+esc(a.emailProprietaire):'')+'</p>'+
+      (a.occupant?'<p><b>Occupant</b> : '+esc(a.occupant)+(a.telOccupant?'<br>📞 '+esc(a.telOccupant):'')+'</p>':'')+
+      '<p class="muted">Payeur : '+esc(a.payeur)+' · langue des messages : '+(a.langue==='AR'?'arabe':'français')+(a.bloc?' · bloc '+esc(a.bloc):'')+(a.etage?' · étage '+esc(a.etage):'')+'</p>'+
+      (a.notes?'<p class="muted">Notes : '+esc(a.notes)+'</p>':'')+'</div>';
+    view('Appartement '+a.id, h);
+  }));
+};
+
+// ---------- Espaces ----------
+function refreshMe(then){ api('moi').then(function(me){ S.me = me; then(); }).catch(function(){ then(); }); }
+ROUTES.tresorerie = function(){ refreshMe(renderTresorerie); };
+ROUTES.secretariat = function(){ refreshMe(renderSecretariat); };
+function renderTresorerie(){
+  view('Trésorerie', '<div class="space-list">'+
+    rowlink('signalements','📥','Paiements signalés'+(S.me.signalements?' ('+S.me.signalements+')':''),'Envoyés par les copropriétaires, à vérifier')+
+    rowlink('paiement','💰','Enregistrer un paiement','Virement ou dépôt – reçu automatique')+
+    rowlink('depense','🧾','Enregistrer une dépense','Avec facture, décharge ou avis de virement')+
+    rowlink('justifs','📎','Justificatifs manquants','Ajouter la photo d\'une facture')+
+    rowlink('compta','📘','Comptabilité','Budget, rapprochement, états annuels, clôture')+
+    rowlink('factures','🧾','Factures à payer','Régler une facture enregistrée « à payer »')+
+    rowlink('relances','🔔','Relances','Appartements en retard')+
+    rowlink('messages','💬','Messages WhatsApp','Bilan du mois, relevé, annonces')+
+    rowlink('decharge','✍️','Décharge à faire signer','Gardien, ménage…')+
+    rowlink('journal','','Journal des actions','Qui a fait quoi, et quand')+
+    rowlink('demandes','✉️','Demandes des copropriétaires'+(S.me.demandes?' ('+S.me.demandes+')':''),'Dont les demandes de documents')+
+    rowlink('liensCopro','🔗','Liens copropriétaires','Envoyer le lien à tous, suivre les activations')+
+    rowlink('mouvements','📒','Mouvements du compte','')+
+  '</div>'+dossiersBox());
+  loadDossiers('tresorerie');
+}
+
+// ---------- Démarrage : modèle Excel et import (usage unique, outil vierge) ----------
+ROUTES.demarrage = function(){
+  view('Démarrage : import Excel', '<div class="card"><p>À utiliser <b>une seule fois</b>, pour lancer l\'outil avec les vraies données. Ce menu disparaît dès les premières opérations.</p>'+
+    '<p><b>1.</b> Téléchargez le modèle et remplissez-le sur ordinateur (Excel ou Google Sheets).</p>'+
+    '<button class="btn pri" onclick="dlModele()">⬇ Télécharger le modèle Excel</button>'+
+    '<p style="margin-top:18px"><b>2.</b> Importez le fichier rempli. L\'outil vérifie tout <b>avant</b> d\'écrire.</p>'+
+    '<input type="file" id="imp_f" accept=".xlsx,.xls"><button class="btn sec" onclick="verifImport()">Vérifier le fichier</button><div id="imp_out"></div></div>');
+};
+function dlModele(){
+  guard(api('import.modele').then(function(m){
+    busy(true);
+    return loadXlsx().then(function(X){
+      var wb = X.utils.book_new();
+      var lis = [['Modèle de démarrage – à remplir une seule fois'],[''],
+        ['Paramètres','Nom et adresse du syndicat, cotisation mensuelle, date_depart (mois AAAA-MM, ex. 2027-01), solde bancaire la veille du départ, RIB.'],
+        ['Bureau','Un membre par ligne. Rôles : admin, syndic, trésorier, secrétaire, consultation (plusieurs possibles, séparés par des virgules). Titre légal : syndic, syndic adjoint ou membre. Dates : JJ/MM/AAAA.'],
+        ['Appartements','Une ligne par appartement. Payeur : propriétaire ou occupant. Langue : FR ou AR. « Dernier mois payé avant départ » : AAAA-MM (ex. 2026-12 = à jour au départ). Autre dette : montant en DH dû avant le départ, hors mois.'],
+        ['Contrats','Facultatif. Dates JJ/MM/AAAA.'],
+        ['Factures à payer','Facultatif : factures reçues et non payées au démarrage. Catégories possibles : '+m.categories.join(', ')+'.'],
+        [''],['Téléphones : format marocain (06…, 07…, ou +212…).']];
+      X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(lis), 'Lisez-moi');
+      m.feuilles.forEach(function(f){
+        var ws = X.utils.aoa_to_sheet([f.header].concat(f.rows));
+        // colonnes texte (mois, téléphones) : éviter qu'Excel les transforme en dates ou nombres
+        f.header.forEach(function(h, j){
+          if(!/mois|Tél|Téléphone|Valeur|Id/.test(h)) return;
+          for(var r=0;r<=f.rows.length+80;r++){ var ref=X.utils.encode_cell({r:r,c:j}); if(!ws[ref]) ws[ref]={t:'s',v:''}; ws[ref].t='s'; ws[ref].z='@'; ws[ref].v=String(ws[ref].v==null?'':ws[ref].v); }
+          ws['!ref'] = X.utils.encode_range({s:{r:0,c:0}, e:{r:Math.max(f.rows.length+80, X.utils.decode_range(ws['!ref']).e.r), c:f.header.length-1}});
+        });
+        ws['!cols'] = f.header.map(function(h){ return {wch: Math.max(12, h.length+2)}; });
+        X.utils.book_append_sheet(wb, ws, sheetName(f.name));
+      });
+      busy(false);
+      showDocSheet({ name: m.nom+'.xlsx', mime:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', data: X.write(wb,{bookType:'xlsx',type:'base64'}) });
+    });
+  }).catch(function(e){ busy(false); throw e; }));
+}
+/** Lit le fichier choisi → { nomFeuille: [ {colonne: valeur} ] } (dates converties en texte). */
+function readClasseur(){
+  var f = $('imp_f').files && $('imp_f').files[0];
+  if(!f) return Promise.reject(new Error('Choisissez le fichier Excel rempli.'));
+  return loadXlsx().then(function(X){
+    return new Promise(function(res, rej){
+      var fr = new FileReader();
+      fr.onerror = function(){ rej(new Error('Lecture du fichier impossible.')); };
+      fr.onload = function(){
+        try{
+          var wb = X.read(new Uint8Array(fr.result), {type:'array', cellDates:true});
+          var out = {};
+          wb.SheetNames.forEach(function(n){
+            if(n==='Lisez-moi') return;
+            out[n] = X.utils.sheet_to_json(wb.Sheets[n], {defval:'', raw:true}).map(function(row){
+              var o = {}; Object.keys(row).forEach(function(k){ var v=row[k];
+                o[k] = v instanceof Date ? v.getFullYear()+'-'+('0'+(v.getMonth()+1)).slice(-2)+'-'+('0'+v.getDate()).slice(-2) : v; });
+              return o;
+            });
+          });
+          res(out);
+        }catch(e){ rej(new Error('Fichier Excel illisible.')); }
+      };
+      fr.readAsArrayBuffer(f);
+    });
+  });
+}
+function verifImport(){
+  readClasseur().then(function(wb){
+    return api('import.verifier',{classeur:wb}).then(function(v){
+      window.__imp = wb;
+      var r = v.resume;
+      var h = '<div class="card '+(v.propre?'ok-box':'')+'" style="margin-top:12px"><b>'+(v.propre?'✔ Fichier correct':'✗ '+v.erreurs.length+' erreur(s) à corriger')+'</b><br>'+
+        r.appartements+' appartements · '+r.bureau+' membres du bureau · '+r.contrats+' contrats · '+r.factures+' factures à payer · '+r.parametres+' paramètres</div>';
+      if(v.erreurs.length) h += '<div class="card list"><div class="h2">Erreurs</div>'+v.erreurs.map(function(e){ return '<div class="item"><b>'+esc(e.feuille)+'</b> ligne '+esc(e.ligne)+' : '+esc(e.message)+'</div>'; }).join('')+'</div>';
+      if(v.avertissements.length) h += '<div class="card list"><div class="h2">À savoir</div>'+v.avertissements.map(function(e){ return '<div class="item muted">'+esc(e.feuille)+' ligne '+esc(e.ligne)+' : '+esc(e.message)+'</div>'; }).join('')+'</div>';
+      if(v.propre) h += '<button class="btn pri" id="imp_go">Importer ces données</button><p class="muted">Remplace les appartements, le bureau (sauf l\'admin) et les paramètres du fichier. Les données d\'exemple et de test sont supprimées, et les liens copropriétaires de test désactivés.</p>';
+      $('imp_out').innerHTML = h;
+      if(v.propre) $('imp_go').onclick = function(){
+        var b=$('imp_go'); if(b.getAttribute('data-c')!=='1'){ b.setAttribute('data-c','1'); b.textContent='Confirmer l\'import ?'; return; }
+        guard(api('import.appliquer',{classeur:window.__imp}).then(function(res){
+          view('Démarrage terminé', '<div class="card ok-box"><p class="big">✔ Données importées</p><p>'+res.appartements+' appartements, '+res.bureau+' membres du bureau, '+res.contrats+' contrats, '+res.factures+' factures à payer.</p>'+
+            '<p>Prochaines étapes : <b>Accès bureau</b> (liens des membres), puis <b>Liens copropriétaires</b> (envoi aux appartements).</p></div><button class="btn sec" onclick="go(\'admin\')">Retour à l\'admin</button>');
+        }));
+      };
+    });
+  }).catch(function(e){ showErr(e.message); });
+}
+
+// ---------- Comptabilité (décret 2.23.700) ----------
+ROUTES.compta = function(){
+  view('Comptabilité', '<div class="space-list">'+
+    rowlink('etats','','États annuels','Annexes 10, 11 et 12 du décret – à présenter à l’AG')+
+    rowlink('budget','','Budget','Prévu, réalisé, exercice précédent')+
+    (has('tresorier')?rowlink('rappro','','Rapprochement bancaire','Chaque mois : solde de l’outil = relevé de la banque'):'')+
+    (has('tresorier')?rowlink('factures','','Factures à payer',''):'')+
+    rowlink('cloture','','Clôture de l’exercice','Livres et états figés en PDF')+
+    '</div><p class="muted">Les écritures en partie double, le grand livre et la balance sont recalculés chaque jour (Admin → Voir les données).</p>');
+};
+function yearSelect(id, ys, sel){ return '<select id="'+id+'" style="width:auto">'+ys.map(function(y){ return '<option'+(y===sel?' selected':'')+'>'+y+'</option>'; }).join('')+'</select>'; }
+function n(v){ return v===null||v===undefined?'—':(v===0?'0':dh(v).replace(' DH','')); }
+function tbl(head, rows){ return '<div class="gridwrap"><table style="border-collapse:collapse;font-size:14px;width:100%"><tr>'+head.map(function(h){ return '<th style="text-align:left;border-bottom:1px solid var(--ink);padding:6px 6px">'+h+'</th>'; }).join('')+'</tr>'+rows.join('')+'</table></div>'; }
+function tr(cells, strong){ return '<tr style="'+(strong?'font-weight:700;':'')+'border-bottom:1px solid var(--line)">'+cells.map(function(c,i){ return '<td style="padding:6px;'+(i>1?'text-align:right;white-space:nowrap':'')+'">'+c+'</td>'; }).join('')+'</tr>'; }
+
+ROUTES.etats = function(y){
+  guard(api('etats.exercices').then(function(ex){
+    var yy = Number(y) || ex.exercices[ex.exercices.length-1];
+    return api('etats.get',{exercice:yy}).then(function(e){
+      var h = '<div class="card"><label>Exercice</label>'+yearSelect('et_y', ex.exercices, yy)+
+        (e.provisoire?' <span class="muted">en cours : chiffres provisoires</span>':'')+
+        '<div class="row"><button class="btn small pri" onclick="etatsPdf('+yy+',false)">PDF des états (annexes 10–12)</button><button class="btn small sec" onclick="etatsPdf('+yy+',true)">PDF des livres</button></div></div>';
+      // Annexe 10
+      h += '<div class="card"><div class="h2">Annexe 10 – Suivi des contributions</div>'+tbl(['Copropriétaire','Lot','Solde 01/01','Annuel','Paiements','Solde 31/12'],
+        e.a10.lignes.map(function(r){ return tr([esc(r.nom), esc(r.id), n(r.ouverture), n(r.annuel), n(r.paiements), '<span class="'+(r.solde>0?'st-retard':'')+'">'+n(r.solde)+'</span>']); })
+        .concat([tr(['Total','',n(e.a10.total.ouverture),n(e.a10.total.annuel),n(e.a10.total.paiements),n(e.a10.total.solde)], true)]))+'</div>';
+      // Annexe 11
+      function side(rows, prev){ return rows.map(function(r,i){ var p=prev?prev[i]:null;
+        if(r.titre) return '<tr><td colspan="3" style="padding:8px 6px 4px;font-weight:700">'+esc(r.ligne+' – '+r.libelle)+'</td></tr>';
+        return tr([esc((r.ligne?r.ligne+' ':'')+r.libelle), p?n(p.v):'—', n(r.v)], r.total); }); }
+      h += '<div class="card"><div class="h2">Annexe 11 – Bilan simplifié au '+esc(e.a11.arrete)+'</div>'+
+        '<p class="muted">'+(e.a11.n.equilibre?'✓ Bilan équilibré':'✗ Bilan déséquilibré : à vérifier')+'</p>'+
+        tbl(['Actif','N-1 approuvé','Exercice'], side(e.a11.n.actif, e.a11.n1&&e.a11.n1.actif))+
+        tbl(['Passif','N-1 approuvé','Exercice'], side(e.a11.n.passif, e.a11.n1&&e.a11.n1.passif))+'</div>';
+      // Annexe 12
+      function bl(rows){ return rows.filter(function(r){ return r.groupe||r.n||r.budget||r.n1; }).map(function(r){ return tr([esc(r.compte), esc(r.libelle), n(r.n1), n(r.budget), n(r.n)], r.groupe); }); }
+      var T = e.a12.totaux;
+      function tt(l, t){ return tr(['', esc(l), n(t.n1), n(t.budget), n(t.n)], true); }
+      h += '<div class="card"><div class="h2">Annexe 12 – Produits et charges</div>'+
+        tbl(['Compte','Libellé','N-1','Budget','Réalisé'], bl(e.a12.chargesCourantes).concat([tt('Total charges courantes (I)', T.I)])
+          .concat(bl(e.a12.produitsCourants)).concat([tt('Total produits courants (II)', T.II), tt('Résultat courant (III = II − I)', T.III)])
+          .concat(bl(e.a12.chargesNonCourantes)).concat([tt('Total charges non courantes (IV)', T.IV)])
+          .concat(bl(e.a12.produitsNonCourants)).concat([tt('Total produits non courants (V)', T.V), tt('Résultat non courant (VI = V − IV)', T.VI), tt('Excédent ou déficit (III + VI)', T.resultat)]))+'</div>';
+      view('États annuels', h);
+      $('et_y').onchange = function(){ go('etats', this.value); };
+    });
+  }));
+};
+function etatsPdf(y, livres){ guard(api('etats.pdf',{exercice:y, livres:livres}).then(function(f){ showDocSheet(f); })); }
+
+ROUTES.budget = function(y){
+  guard(api('etats.exercices').then(function(ex){
+    var years = ex.exercices.concat([ex.exercices[ex.exercices.length-1]+1]);
+    var yy = Number(y) || ex.exercices[ex.exercices.length-1];
+    return api('budget.get',{exercice:yy}).then(function(b){
+      var ed = has('tresorier');
+      var titres = {chargesCourantes:'Charges courantes', chargesNonCourantes:'Charges non courantes (travaux)', produitsCourants:'Produits courants', produitsNonCourants:'Produits non courants'};
+      var h = '<div class="card"><label>Exercice</label>'+yearSelect('bu_y', years, yy)+
+        '<p class="muted">L’AG vote séparément le budget des charges courantes et celui des travaux. Les montants s’affichent aussi dans l’annexe 12.</p>'+
+        (ed?'<label>Référence du PV de vote (ex. « PV AG du 15/01/2027 »)</label><input id="bu_ref" type="text" value="'+esc(b.ref)+'">':(b.ref?'<p>Voté : '+esc(b.ref)+'</p>':'<p class="muted">Budget non voté.</p>'))+
+        (ed?'<button class="btn small sec" onclick="budgetProposer()">Proposer à partir de l’exercice précédent</button>':'')+'</div>';
+      var g = null;
+      h += '<div class="card"><div class="gridwrap"><table style="border-collapse:collapse;font-size:14px;width:100%"><tr><th style="text-align:left">Compte</th><th style="text-align:right">N-1</th><th style="text-align:right">Prévu</th><th style="text-align:right">Réalisé</th><th style="text-align:right">%</th></tr>'+
+        b.lignes.map(function(l){
+          var head = l.groupe!==g ? '<tr><td colspan="5" style="padding:12px 4px 4px;font-weight:700;border-bottom:1px solid var(--ink)">'+titres[l.groupe]+'</td></tr>' : '';
+          g = l.groupe;
+          var pct = l.prevu ? Math.round(l.realise/l.prevu*100) : null;
+          var warn = pct!==null && l.groupe.indexOf('charges')===0 && pct>=80;
+          return head+'<tr style="border-bottom:1px solid var(--line)"><td style="padding:5px 4px">'+esc(l.compte)+' <span class="muted">'+esc(l.libelle)+'</span></td>'+
+            '<td style="text-align:right">'+n(l.n1)+'</td><td style="text-align:right">'+(ed?'<input class="bu_v" data-c="'+esc(l.compte)+'" data-n1="'+l.n1+'" type="number" value="'+(l.prevu||'')+'" style="width:110px;padding:6px;text-align:right">':n(l.prevu))+'</td>'+
+            '<td style="text-align:right">'+n(l.realise)+'</td><td style="text-align:right" class="'+(warn?'st-retard':'')+'">'+(pct===null?'':pct+' %')+'</td></tr>';
+        }).join('')+'</table></div></div>'+(ed?'<button class="btn pri" onclick="budgetSave('+yy+')">Enregistrer le budget</button>':'');
+      view('Budget '+yy, h);
+      $('bu_y').onchange = function(){ go('budget', this.value); };
+    });
+  }));
+};
+function budgetProposer(){ Array.prototype.forEach.call(document.querySelectorAll('.bu_v'), function(i){ var v=Number(i.getAttribute('data-n1')); if(v>0 && !i.value) i.value=Math.ceil(v/100)*100; }); }
+function budgetSave(y){
+  var lignes = Array.prototype.map.call(document.querySelectorAll('.bu_v'), function(i){ return {compte:i.getAttribute('data-c'), prevu:i.value||0}; });
+  guard(api('budget.enregistrer',{exercice:y, ref:$('bu_ref').value, lignes:lignes}).then(function(r){ go('budget', y); setTimeout(function(){ showErr('✓ Budget enregistré ('+r.lignes+' lignes).'); },400); }));
+}
+
+ROUTES.rappro = function(){
+  guard(api('rappro.liste').then(function(list){
+    view('Rapprochement bancaire', '<p class="muted">Chaque mois, saisissez le solde de fin de mois indiqué sur le relevé de la banque et joignez le relevé. L’outil le compare à son propre solde.</p>'+
+      (list.length?list.map(function(r){
+        return '<div class="card"><b>'+esc(r.label)+'</b> · solde de l’outil : <b>'+dh(r.soldeOutil)+'</b><br>'+
+          (r.fait?'<span class="'+(Math.abs(r.ecart)<0.01?'st-a_jour':'st-retard')+'">'+(Math.abs(r.ecart)<0.01?'✓ Rapproché':'Écart '+dh(r.ecart))+'</span> <span class="muted">– relevé '+dh(r.soldeReleve)+(r.commentaire?' – '+esc(r.commentaire):'')+' – '+esc(r.par)+'</span>'+(r.releve?' · <a href="'+esc(r.releve)+'">relevé</a>':''):'<span class="muted">À faire</span>')+
+          '<details><summary class="btn small sec" style="display:inline-block">'+(r.fait?'Corriger':'Rapprocher')+'</summary>'+
+          '<label>Solde du relevé bancaire au '+esc(r.label)+' (fin de mois)</label><input id="rp_s_'+r.mois+'" type="number" step="0.01" value="'+(r.fait?r.soldeReleve:'')+'">'+
+          fileField('rp_f_'+r.mois,'Relevé bancaire (PDF ou photo)')+'<label>Commentaire (obligatoire s’il y a un écart)</label><input id="rp_c_'+r.mois+'" type="text" value="'+esc(r.commentaire||'')+'">'+
+          '<button class="btn pri" onclick="rapprocher(\''+r.mois+'\')">Enregistrer</button></details></div>';
+      }).join(''):'<div class="card muted">Pas encore de mois terminé.</div>'));
+  }));
+};
+function rapprocher(m){
+  guard(readFile($('rp_f_'+m)).then(function(f){ return api('rappro.enregistrer',{mois:m, solde:$('rp_s_'+m).value, commentaire:$('rp_c_'+m).value, fichier:f}); }).then(function(){ go('rappro'); }));
+}
+
+ROUTES.cloture = function(){
+  guard(Promise.all([api('etats.exercices'), api('clotures.liste')]).then(function(res){
+    var ex = res[0], cl = res[1];
+    var cy = new Date().getFullYear();
+    var closable = ex.exercices.filter(function(y){ return y < cy && !cl.some(function(c){ return Number(c.exercice)===y; }); });
+    var h = '<div class="card"><p>Clôturer un exercice <b>fige</b> ses écritures : plus aucune opération ne pourra être datée dans cette année. Les états (annexes 10, 11, 12) et les livres sont enregistrés en PDF.</p>'+
+      (ex.cloture?'<p>Dernier exercice clôturé : jusqu’au <b>'+esc(ex.cloture)+'</b>.</p>':'')+'</div>';
+    if(has('admin') && closable.length) h += '<div class="card"><label>Exercice à clôturer</label>'+yearSelect('cl_y', closable, closable[0])+
+      '<button class="btn danger" id="cl_go">Clôturer l’exercice</button><div id="cl_out"></div></div>';
+    else if(!closable.length) h += '<div class="card muted">Aucun exercice terminé à clôturer pour l’instant.</div>';
+    h += cl.length?'<div class="card"><div class="h2">Exercices clôturés</div><div class="list">'+cl.map(function(c){
+      return '<div class="item"><b>'+esc(c.exercice)+'</b> – clôturé le '+esc(c.le)+' par '+esc(c.par)+' · résultat '+dh(c.resultat)+
+        '<br><a href="'+esc(c.etats)+'">États de synthèse (PDF)</a> · <a href="'+esc(c.livres)+'">Livres (PDF)</a>'+(c.avertissements?'<br><span class="muted">'+esc(c.avertissements)+'</span>':'')+'</div>';
+    }).join('')+'</div></div>':'';
+    view('Clôture de l’exercice', h);
+    if($('cl_go')) $('cl_go').onclick = function(){
+      var y = Number($('cl_y').value), b = $('cl_go');
+      if(b.getAttribute('data-c')!=='1'){ b.setAttribute('data-c','1'); b.textContent='Confirmer : clôturer '+y+' définitivement ?'; return; }
+      guard(api('compta.cloturer',{exercice:y}).then(function(r){
+        if(r.confirmation){
+          $('cl_out').innerHTML = '<div class="err">À noter avant de clôturer : '+r.avertissements.map(esc).join(' ; ')+'</div><button class="btn danger" id="cl_go2">Clôturer quand même</button>';
+          $('cl_go2').onclick = function(){ guard(api('compta.cloturer',{exercice:y, confirmer:true}).then(function(){ go('cloture'); })); };
+          return;
+        }
+        go('cloture');
+      }));
+    };
+  }));
+};
+
+// ---------- Factures à payer ----------
+ROUTES.factures = function(){
+  guard(api('depense.liste',{aPayer:true, limite:200}).then(function(list){
+    var total = list.reduce(function(s,f){ return s+Number(f.montant||0); }, 0);
+    view('Factures à payer', (list.length?'<div class="card"><div class="muted">Total à payer</div><div class="big">'+dh(total)+'</div></div>'+list.map(function(f){
+      return '<div class="card"><b>'+esc(f.numero)+'</b> · facture du '+esc(f.date)+'<br>'+esc(f.categorie)+' – '+esc(f.beneficiaire)+' – <b>'+dh(f.montant)+'</b>'+
+        (f.description?'<br><span class="muted">'+esc(f.description)+'</span>':'')+
+        '<details><summary class="btn small pri" style="display:inline-block">Marquer comme payée</summary>'+
+        '<label>Date du paiement</label><input id="fp_d_'+esc(f.numero)+'" type="date" value="'+today()+'">'+
+        '<label>Mode</label><select id="fp_m_'+esc(f.numero)+'"><option value="virement">Virement</option><option value="cheque">Chèque</option></select>'+
+        '<label>N° de chèque / référence</label><input id="fp_r_'+esc(f.numero)+'" type="text">'+
+        '<button class="btn pri" onclick="payerFacture(\''+esc(f.numero)+'\')">Enregistrer le paiement</button></details></div>';
+    }).join(''):'<div class="card">✔ Aucune facture à payer.</div>'));
+  }));
+};
+function payerFacture(n){
+  guard(api('depense.payer',{numero:n, date:$('fp_d_'+n).value, mode:$('fp_m_'+n).value, reference:$('fp_r_'+n).value}).then(function(){ go('factures'); }));
+}
+
+// ---------- Admin : données du tableur, consultation et téléchargement Excel ----------
+ROUTES.donnees = function(onglet){
+  guard(api('admin.donnees').then(function(tabs){
+    var sel = onglet || 'APPARTEMENTS';
+    view('Données', '<div class="card"><label>Onglet</label><select id="dn_tab">'+tabs.map(function(t){
+        return '<option value="'+esc(t.key)+'"'+(t.key===sel?' selected':'')+'>'+esc(t.name)+(t.calcule?' (calculé)':'')+'</option>'; }).join('')+'</select>'+
+      '<div class="row"><button class="btn small sec" onclick="exportTab()">⬇ Télécharger cet onglet (Excel)</button><button class="btn small pri" onclick="exportAll()">⬇ Tout le classeur (Excel)</button></div>'+
+      '<input id="dn_q" type="text" placeholder="Rechercher dans l\'onglet" style="margin-top:10px"></div><div id="dn_out"><p class="muted">Chargement…</p></div>');
+    $('dn_tab').onchange = function(){ go('donnees', this.value); };
+    api('admin.donnees',{onglet:sel}).then(function(d){
+      window.__dn = d;
+      function draw(){
+        var q = ($('dn_q').value||'').toLowerCase();
+        var rows = q ? d.rows.filter(function(r){ return r.join(' ').toLowerCase().indexOf(q)>=0; }) : d.rows;
+        $('dn_out').innerHTML = '<p class="muted">'+rows.length+' ligne(s)'+(rows.length>300?' – 300 premières affichées (le téléchargement contient tout)':'')+'</p>'+
+          '<div class="gridwrap card" style="padding:0;max-height:65vh;overflow:auto"><table style="border-collapse:collapse;font-size:13px;white-space:nowrap">'+
+          '<tr>'+d.header.map(function(h){ return '<th style="position:sticky;top:0;background:#e7ecef;padding:6px 8px;text-align:left;border-bottom:1px solid var(--line)">'+esc(h)+'</th>'; }).join('')+'</tr>'+
+          rows.slice(0,300).map(function(r){ return '<tr>'+r.map(function(c){
+            var s = String(c==null?'':c);
+            return '<td style="padding:5px 8px;border-bottom:1px solid #eef1f4;max-width:280px;overflow:hidden;text-overflow:ellipsis">'+
+              (isDriveFile(s.split('\n')[0])?'<a href="'+esc(s.split('\n')[0])+'">📎 fichier</a>':esc(s))+'</td>'; }).join('')+'</tr>'; }).join('')+
+          '</table></div>';
+      }
+      $('dn_q').oninput = draw; draw();
+    }).catch(function(e){ showErr(e.message); });
+  }));
+};
+
+/** Charge la bibliothèque Excel (SheetJS) à la demande. */
+function loadXlsx(){
+  if(window.XLSX) return Promise.resolve(window.XLSX);
+  return new Promise(function(res, rej){
+    var s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    s.onload=function(){ window.XLSX ? res(window.XLSX) : rej(new Error('Bibliothèque Excel indisponible')); };
+    s.onerror=function(){ rej(new Error('Bibliothèque Excel indisponible')); };
+    document.head.appendChild(s);
+  });
+}
+function sheetName(n){ return String(n).replace(/[\\\/\?\*\[\]:]/g,' ').slice(0,31); }
+function xlsxFile(name, tabs){
+  return loadXlsx().then(function(X){
+    var wb = X.utils.book_new();
+    tabs.forEach(function(t){ X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet([t.header].concat(t.rows)), sheetName(t.name)); });
+    return { name: name, mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', data: X.write(wb, {bookType:'xlsx', type:'base64'}) };
+  });
+}
+/** Repli si la bibliothèque Excel ne se charge pas : CSV (séparateur « ; »), lisible par Excel. */
+function csvFile(name, t){
+  var cell = function(c){ var s=String(c==null?'':c); if(/^[=+\-@]/.test(s)) s="'"+s; return /[";\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s; };
+  var csv = '﻿'+[t.header].concat(t.rows).map(function(r){ return r.map(cell).join(';'); }).join('\r\n');
+  return { name: name.replace(/\.xlsx$/,'.csv'), mime: 'text/csv', data: btoa(unescape(encodeURIComponent(csv))) };
+}
+function exportTab(){
+  var d = window.__dn; if(!d) return;
+  var name = 'Syndic – '+d.name+' – '+today()+'.xlsx';
+  busy(true);
+  xlsxFile(name, [d]).catch(function(){ return csvFile(name, d); }).then(function(f){ busy(false); showDocSheet(f); });
+}
+function exportAll(){
+  guard(api('admin.export').then(function(x){
+    var name = 'Syndic – classeur complet – '+x.date+'.xlsx';
+    busy(true);
+    return xlsxFile(name, x.onglets).then(function(f){ busy(false); showDocSheet(f); }, function(e){ busy(false); showErr(e.message+' : téléchargez les onglets un par un (format CSV).'); });
+  }));
+}
+
+/** Section « Fichiers » en bas de chaque espace : les fichiers listés dans l'application. */
+function dossiersBox(){ return '<div id="dossiers"><div class="h2" style="margin-top:18px">📁 Fichiers</div><p class="muted">Chargement…</p></div>'; }
+function fileIco(mime){ return /pdf/.test(mime)?'📄':/image/.test(mime)?'🖼️':/spreadsheet/.test(mime)?'📊':'📎'; }
+function fileSize(n){ return n>1048576 ? (n/1048576).toFixed(1)+' Mo' : Math.max(1,Math.round(n/1024))+' Ko'; }
+function loadDossiers(espace){
+  apiOk('fichiers.liste', {espace:espace}).then(function(r){
+    var box = $('dossiers'); if(!box) return;
+    if(!r.ok || !r.data.length){ box.innerHTML=''; return; }
+    box.innerHTML = '<div class="h2" style="margin-top:18px">📁 Fichiers</div>'+r.data.map(function(d){
+      return '<details class="card" style="padding:12px 16px" data-esp="'+esc(espace)+'" data-i="'+d.index+'"><summary style="cursor:pointer;font-weight:700">📂 '+esc(d.label)+'</summary>'+
+        '<div class="flist"><p class="muted">Chargement…</p></div></details>';
+    }).join('');
+    // Le contenu d'un dossier n'est chargé qu'à son ouverture
+    Array.prototype.forEach.call(box.querySelectorAll('details[data-i]'), function(det){
+      det.addEventListener('toggle', function(){
+        if(!det.open || det.getAttribute('data-loaded')) return;
+        det.setAttribute('data-loaded','1');
+        apiOk('fichiers.liste', {espace:det.getAttribute('data-esp'), dossier:det.getAttribute('data-i')}).then(function(x){
+          var out = det.querySelector('.flist');
+          if(!x.ok){ out.innerHTML='<p class="muted">'+esc(x.error)+'</p>'; det.removeAttribute('data-loaded'); return; }
+          var d = x.data;
+          out.innerHTML = d.files.length ? '<div class="list">'+d.files.map(function(f){
+            return '<div class="item" style="display:flex;align-items:center;gap:10px"><span style="font-size:22px">'+fileIco(f.mime)+'</span>'+
+              '<div style="flex:1;min-width:0"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(f.name)+'</div><span class="muted">'+esc(f.date)+' · '+fileSize(f.size)+'</span></div>'+
+              '<button class="btn small sec" style="margin:0" onclick="openDoc(\''+esc(f.id)+'\')">Ouvrir</button></div>';
+          }).join('')+(d.total>d.files.length?'<p class="muted">… et '+(d.total-d.files.length)+' plus anciens.</p>':'')+'</div>' : '<p class="muted">Aucun fichier.</p>';
+        }, function(){ det.removeAttribute('data-loaded'); });
+      });
+    });
+  }, function(){ var box=$('dossiers'); if(box) box.innerHTML=''; });
+}
+
+// ---------- Visionneuse : les fichiers sont servis par l'application, sans compte Google ----------
+function isDriveFile(href){ return /drive\.google\.com\/(file\/d\/|open\?id=)/.test(href||''); }
+function openDoc(idOrUrl){
+  busy(true);
+  var p = (window.R && R.session && !S.session) ? call('residentFichier', R.session, idOrUrl) : call('api', S.session, 'fichier.ouvrir', /^https?:/.test(idOrUrl)?{url:idOrUrl}:{id:idOrUrl});
+  p.then(function(res){
+    busy(false);
+    if(!res.ok) return showErr(res.error==='SESSION_EXPIREE'?'Session expirée, reconnectez-vous.':res.error);
+    showDocSheet(res.data);
+  }, function(e){ busy(false); showErr(e.message); });
+}
+var SAFE_MIME = ['application/pdf','image/jpeg','image/png','image/webp','image/gif','image/heic','image/heif'];
+/** Affiche un fichier {name, mime, data base64} : Ouvrir / Télécharger. */
+function showDocSheet(f){
+    var mime = SAFE_MIME.indexOf(f.mime) >= 0 ? f.mime : 'application/octet-stream'; // jamais de HTML exécutable
+    var bin = atob(f.data), bytes = new Uint8Array(bin.length);
+    for(var i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
+    var url = URL.createObjectURL(new Blob([bytes], {type:mime}));
+    f = { name: f.name, mime: mime };
+    var old = $('docsheet'); if(old) old.remove();
+    var s = document.createElement('div');
+    s.id='docsheet';
+    s.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:20;background:#fff;border-top:1px solid var(--line);box-shadow:0 -6px 24px rgba(0,0,0,.15);padding:16px;border-radius:16px 16px 0 0;max-height:85vh;overflow:auto';
+    s.innerHTML = '<div style="max-width:680px;margin:0 auto"><div style="display:flex;align-items:center;gap:10px"><b style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+fileIco(f.mime)+' '+esc(f.name)+'</b>'+
+      '<button class="btn small sec" style="margin:0" onclick="closeDoc()">✕</button></div>'+
+      (/^image\//.test(f.mime)?'<img src="'+url+'" alt="" style="width:100%;margin-top:10px;border-radius:10px">':'')+
+      '<div class="row"><a class="btn pri" style="flex:1" href="'+url+'" target="_blank" rel="noopener">Ouvrir</a>'+
+      '<a class="btn sec" style="flex:1" href="'+url+'" download="'+esc(f.name)+'">Télécharger</a></div></div>';
+    document.body.appendChild(s);
+}
+function closeDoc(){ var s=$('docsheet'); if(s) s.remove(); }
+// Tous les liens vers des fichiers Drive passent par la visionneuse
+document.addEventListener('click', function(e){
+  var a = e.target && e.target.closest ? e.target.closest('a') : null;
+  if(!a || !isDriveFile(a.getAttribute('href'))) return;
+  e.preventDefault();
+  openDoc(a.getAttribute('href'));
+}, true);
+function renderSecretariat(){
+  view('Secrétariat', '<div class="space-list">'+
+    rowlink('demandes','✉️','Demandes des copropriétaires'+(S.me.demandes?' ('+S.me.demandes+')':''),'Questions, problèmes signalés, documents')+
+    rowlink('reunions','📅','Réunions et AG','Convocation, présences, décisions, PV')+
+    rowlink('decisions','📜','Registre des décisions','Suivi de ce qui a été voté')+
+    rowlink('projets','🏗️','Projets et travaux prévus','Devis, vote en AG, réalisation')+
+    rowlink('incidents','🛠️','Incidents et travaux','Pannes, réparations, photos')+
+    rowlink('contrats','📄','Contrats et prestataires','Échéances et documents')+
+    rowlink('messages','💬','Messages WhatsApp','Annonces, convocations')+
+  '</div>'+dossiersBox());
+  loadDossiers('secretariat');
+}
+ROUTES.admin = function(){ refreshMe(renderAdmin); };
+function renderAdmin(){
+  var L = (S.me && S.me.liens) || {};
+  view('Admin', '<div class="space-list">'+
+    (S.me && S.me.demarrage ? rowlink('demarrage','📥','Démarrage : import Excel','Une seule fois, au lancement : appartements, bureau, soldes') : '')+
+    rowlink('acces','🔑','Accès des membres du bureau','Générer ou désactiver les liens personnels')+
+    rowlink('journal','','Journal des actions','Qui a fait quoi, et quand')+
+    rowlink('liensCopro','🔗','Liens copropriétaires','Envoyer le lien aux 60 appartements, suivre les activations')+
+    rowlink('afaire','✅','Toutes les tâches','Ce qui reste à faire, tous rôles confondus')+
+    rowlink('donnees','📊','Voir les données','Tous les onglets du tableur, téléchargement Excel')+
+    (L.tableur?rowlink('','📊','Ouvrir le tableur (Google Sheets)','Membres, appartements, paramètres – demande la connexion Google','',L.tableur):'')+
+    (L.page?rowlink('','🌐','Page des copropriétaires','','',L.page):'')+
+  '</div><p class="muted">Les membres du bureau, les appartements, les paramètres et les textes des messages se modifient dans le tableur (onglets Bureau, Appartements, Paramètres, Messages).</p>'+dossiersBox());
+  loadDossiers('admin');
+}
+</script>
+
+<script>
+// ---------- Admin : journal des actions (qui a fait quoi, quand) ----------
+ROUTES.journal = function(qui){
+  guard(api('journal.actions', {qui: qui||''}).then(function(d){
+    var h = '<p class="muted">Chaque action est notée avec la personne qui l’a faite : paiements, dépenses, réponses, accès, connexions, envois des copropriétaires…</p>'+
+      '<label>Personne</label><select id="jr_qui"><option value="">Tout le monde</option>'+d.personnes.map(function(p){ return '<option'+(p===qui?' selected':'')+'>'+esc(p)+'</option>'; }).join('')+'</select>'+
+      (d.lignes.length ? '<div class="card list">'+d.lignes.map(function(l){
+        var refuse = /^Refusé/.test(l.resultat||'');
+        return '<div class="item"><span class="muted">'+esc(l.date)+'</span><br><b>'+esc(l.action)+'</b>'+(refuse?' <span class="st-retard">'+esc(l.resultat)+'</span>':'')+
+          '<br>'+esc(l.qui)+(l.profil?' <span class="muted">('+esc(l.profil)+')</span>':'')+
+          (l.detail?'<br><span class="muted">'+esc(l.detail)+'</span>':'')+'</div>';
+      }).join('')+'</div>' : '<div class="card muted">Aucune action enregistrée.</div>');
+    view('Journal des actions', h);
+    $('jr_qui').onchange = function(){ go('journal', this.value); };
+  }));
+};
+</script>
+
+<script>
+// =====================================================================
+// Vue copropriétaire (lien ?r=… + code PIN) : son appartement, ses actions,
+// et les chiffres globaux de l'immeuble (jamais d'autre appartement)
+// =====================================================================
+var RSTORE = 'syndic.resident';
+var R = { r:null, session:null, data:null };
+
+/** Appel « copropriétaire » : par le lien (session copropriétaire) ou depuis l'Espace bureau (« Mon appartement »). */
+function rCall(fnLien, actionBureau, payload){
+  if(R.bureau) return apiOk(actionBureau, payload||{});
+  return payload===undefined ? call(fnLien, R.session) : call(fnLien, R.session, payload);
+}
+
+// Membre du bureau qui habite l'immeuble : sa page d'appartement, sans second lien
+ROUTES.monappart = function(){
+  R.bureau = true;
+  guard(api('monappart.get').then(function(d){ R.data = d; residentRender(); }));
+};
+
+function residentScreen(r){
+  R.r = r;
+  var st = null; try{ st = JSON.parse(localStorage.getItem(RSTORE)||'null'); }catch(e){}
+  if(st && st.r===r && st.session) return residentLoad(st.session);
+  residentPin(r);
+}
+function residentPin(r){
+  busy(true);
+  call('residentStatus', r).then(function(res){
+    busy(false);
+    if(!res.ok) return view('Syndic', '<div class="card"><div class="err">'+esc(res.error)+'</div></div>');
+    var setup = res.data.needPinSetup;
+    view('Appartement '+res.data.appartement, '<div class="card"><p>Bienvenue. Cette page montre la situation de l\'<b>appartement '+esc(res.data.appartement)+'</b>.</p>'+
+      (setup?'<p>Choisissez un <b>code à 4 chiffres</b>. Il vous sera demandé de temps en temps.</p>':'<p>Entrez votre <b>code à 4 chiffres</b>.</p>')+
+      '<input id="rpin" class="pin" type="password" inputmode="numeric" maxlength="4" autocomplete="off">'+
+      (setup?'<label>Retapez le code</label><input id="rpin2" class="pin" type="password" inputmode="numeric" maxlength="4" autocomplete="off">':'')+
+      '<button class="btn pri" id="rgo">Entrer</button>'+
+      (setup?'':'<p class="muted">Code oublié ? Demandez un nouveau lien au trésorier du syndic.</p>')+'</div>');
+    $('homeBtn').style.display='none';
+    $('rgo').onclick = function(){
+      var p=$('rpin').value;
+      if(setup && p!==$('rpin2').value) return showErr('Les deux codes ne sont pas identiques.');
+      busy(true);
+      call(setup?'residentSetPin':'residentLoginPin', r, p).then(function(x){
+        busy(false);
+        if(!x.ok) return showErr(x.error);
+        try{ localStorage.setItem(RSTORE, JSON.stringify({r:r, session:x.data.session})); }catch(e){}
+        residentLoad(x.data.session);
+      }, function(e){ busy(false); showErr(e.message); });
+    };
+  }, function(e){ busy(false); view('Syndic','<div class="card"><div class="err">'+esc(e.message)+'</div></div>'); });
+}
+
+function residentLoad(session){
+  R.session = session;
+  busy(true);
+  call('residentView', session).then(function(res){
+    busy(false);
+    if(!res.ok){ try{ localStorage.removeItem(RSTORE); }catch(e){} return residentPin(R.r); }
+    R.data = res.data;
+    residentRender();
+  }, function(e){ busy(false); view('Syndic','<div class="card"><div class="err">'+esc(e.message)+'</div></div>'); });
+}
+
+var SIG_ST = { 'en attente':'En attente de vérification', 'validé':'✓ Confirmé', 'refusé':'✗ Refusé' };
+var DEM_ST = { 'reçue':'Envoyée', 'en cours':'En cours de traitement', 'traitée':'✓ Traitée' };
+/** Étapes d'un envoi : envoyé → lu par le syndic → réponse / décision. */
+function etapes(list){
+  return '<div class="etapes">'+list.map(function(e){ return '<span class="'+(e[1]?'fait':'')+'">'+(e[1]?'✓ ':'○ ')+esc(e[0])+(e[1]&&e[1]!==true?' <small>'+esc(e[1])+'</small>':'')+'</span>'; }).join('')+'</div>';
+}
+/** Un résumé de l'état des envois, pour détecter « du nouveau » depuis la dernière visite (mémorisé sur ce téléphone). */
+function envoisEmpreinte(d){ return d.signalements.map(function(s){ return s.id+':'+s.statut; }).concat(d.demandes.map(function(s){ return s.id+':'+s.statut+':'+(s.reponse||'').length; })).join('|'); }
+function envoisNouveautes(d){
+  var key = 'syndic.envois.'+d.appartement.id, old = null;
+  try { old = localStorage.getItem(key); localStorage.setItem(key, envoisEmpreinte(d)); } catch(e){ return []; }
+  if(old === null) return [];
+  var prev = {}; old.split('|').forEach(function(x){ var p=x.split(':'); prev[p[0]] = x; });
+  var out = [];
+  d.signalements.forEach(function(s){ var p = prev[s.id]; if(p && p !== s.id+':'+s.statut && s.statut!=='en attente') out.push('Votre paiement de '+dh(s.montant)+' : '+(s.statut==='validé'?'confirmé':'refusé')); });
+  d.demandes.forEach(function(s){ var p = prev[s.id]; if(p && p !== s.id+':'+s.statut+':'+(s.reponse||'').length) out.push('Votre demande « '+s.type+' » : '+(s.reponse?'le syndic a répondu':DEM_ST[s.statut]||s.statut)); });
+  return out;
+}
+
+function residentRender(){
+  var d = R.data, a = d.appartement;
+  var st = {retard:'En retard', a_jour:'À jour', avance:'Payé d\'avance'}[a.statut];
+  var bg = {retard:'#fde8e7', a_jour:'#e6f4ea', avance:'#e8f0fe'}[a.statut];
+  var h = '<p class="muted" style="margin-top:0">'+esc(d.syndicat)+'</p>'+
+    '<div class="card" style="background:'+bg+'"><div class="big" style="font-size:24px">Bonjour '+esc(d.personne||a.nom)+'</div>'+
+    '<div>Appartement '+esc(a.id)+(d.personne && d.personne!==a.nom ? ' · '+esc(a.nom) : '')+'</div>'+
+    '<div class="st-'+a.statut+'" style="font-size:24px;margin-top:8px">'+(a.statut==='retard'?'✗ ':'✓ ')+st+'</div>'+
+    '<p style="font-size:20px;margin:10px 0 0">'+(a.du>0 ? 'Il reste <b>'+dh(a.du)+'</b> à payer'+(function(){ var r=a.mois.filter(function(m){return m.code==='R';}).map(function(m){return m.label;}); return r.length?' ('+esc(r.join(', '))+')':''; })()+'.' : 'Tout est payé'+(a.avance>0?' jusqu\'à '+esc(a.payeJusqua):'')+'. Merci !')+'</p>'+
+    '<p style="margin:6px 0 0">Payé jusqu\'à : <b>'+esc(a.payeJusqua)+'</b></p>'+
+    '<p class="muted" style="margin-bottom:0">Cotisation : '+dh(d.mensuel)+' par mois.</p></div>';
+
+  // Actions
+  h += '<button class="btn pri" onclick="rForm(\'paiement\')">💰 Signaler un paiement</button>'+
+    '<button class="btn sec" onclick="rForm(\'demande\')">✉️ Envoyer une demande</button>'+
+    (d.contact && d.contact.whatsapp ? '<a class="btn wa" target="_blank" href="'+esc(d.contact.whatsapp)+'">Écrire au trésorier sur WhatsApp</a>' : '')+'<div id="rform"></div>';
+
+  // Suivi : paiements signalés et demandes, avec accusé de lecture et réponse
+  function sigItem(s){
+    var cls = s.statut==='refusé'?'st-retard':s.statut==='validé'?'st-a_jour':'';
+    return '<div class="item"><b>'+dh(s.montant)+'</b> · '+esc(s.mode)+(s.datePaiement?' du '+esc(s.datePaiement):'')+'<br>'+
+      '<b class="'+cls+'">'+esc(SIG_ST[s.statut]||s.statut)+'</b>'+(s.statut==='validé'&&s.recu?' – reçu n° '+esc(s.recu):'')+
+      (s.motif?'<br>Motif : '+esc(s.motif):'')+
+      etapes([['Envoyé', s.date], ['Vu par le syndic', s.lu || (s.statut!=='en attente')], [s.statut==='refusé'?'Refusé':'Confirmé', s.statut!=='en attente' ? (s.traite||true) : '']])+'</div>';
+  }
+  function demItem(s){
+    return '<div class="item"><b>'+esc(s.type)+'</b><br><span class="muted">« '+esc(String(s.message).slice(0,200))+' »</span><br>'+
+      '<b class="'+(s.statut==='traitée'?'st-a_jour':'')+'">'+esc(DEM_ST[s.statut]||s.statut)+'</b>'+
+      etapes([['Envoyée', s.date], ['Lue par le syndic', s.lu || (s.statut!=='reçue')], ['Réponse', s.reponse ? (s.traite||true) : '']])+
+      (s.reponse?'<div class="reponse"><b>Réponse du syndic :</b><br>'+esc(s.reponse).replace(/\n/g,'<br>')+'</div>':'')+'</div>';
+  }
+  function bloc(titre, list, item, vide){
+    return '<div class="card"><div class="h2">'+titre+'</div>'+(list.length ? '<div class="list">'+list.slice(0,3).map(item).join('')+'</div>'+
+      (list.length>3?'<details><summary class="btn sec">Voir tout ('+list.length+')</summary><div class="list">'+list.slice(3).map(item).join('')+'</div></details>':'')
+      : '<p class="muted">'+vide+'</p>')+'</div>';
+  }
+  var nouv = envoisNouveautes(d);
+  if(nouv.length) h = '<div class="card nouveau"><b>Du nouveau depuis votre dernière visite</b><ul>'+nouv.map(function(x){ return '<li>'+esc(x)+'</li>'; }).join('')+'</ul></div>' + h;
+  h += bloc('Mes paiements signalés', d.signalements, sigItem, 'Aucun paiement signalé. Après un virement, touchez « Signaler un paiement ».');
+  h += bloc('Mes demandes', d.demandes, demItem, 'Aucune demande envoyée.');
+
+  h += '<div class="card"><div class="h2">Mes mois</div>'+legend()+'<div class="mchips">'+a.mois.map(function(m){
+    return '<span class="c c-'+m.code+'">'+esc(m.label)+' '+(SYMB[m.code]||'')+'</span>';
+  }).join('')+'</div></div>';
+
+  function payItem(p){
+    return '<div class="item"><b>'+esc(p.date)+'</b> · <b>'+dh(p.montant)+'</b><br><span class="muted">'+esc(p.mois||'')+' · '+esc(p.mode||'')+'</span>'+
+      (p.recu?'<br><a target="_blank" href="'+esc(p.recu)+'">📄 Reçu n° '+esc(p.numero)+'</a>':'<br><span class="muted">Reçu n° '+esc(p.numero)+'</span>')+'</div>';
+  }
+  var pays = a.paiements.slice(0,24);
+  h += '<div class="card"><div class="h2">Mes derniers paiements</div>'+(pays.length?'<div class="list">'+pays.slice(0,3).map(payItem).join('')+'</div>'+
+    (pays.length>3?'<details><summary class="btn sec">Voir tous mes paiements ('+pays.length+')</summary><div class="list">'+pays.slice(3).map(payItem).join('')+'</div></details>':'')
+    :'<p class="muted">Aucun paiement enregistré pour l\'instant.</p>')+'</div>';
+
+  h += residentDocs(d.documents);
+
+  if(d.paiement.rib || d.paiement.consignes){
+    h += '<div class="card"><div class="h2">Comment payer</div>'+(d.paiement.consignes?'<p>'+esc(d.paiement.consignes)+'</p>':'')+
+      (d.paiement.rib?'<p>RIB du syndic :<br><b style="font-size:20px;letter-spacing:1px">'+esc(d.paiement.rib)+'</b></p>':'')+'</div>';
+  }
+
+  if(d.evenements.length){
+    h += '<div class="card"><div class="h2">📅 Prochaines assemblées</div>'+d.evenements.map(function(e){
+      return '<p><b>'+esc(e.type)+'</b> – '+esc(e.date)+(e.heure?' à '+esc(e.heure):'')+(e.lieu?', '+esc(e.lieu):'')+
+        (e.convocation?'<br><a target="_blank" href="'+esc(e.convocation)+'">📄 Convocation</a>':'')+'</p>';
+    }).join('')+'</div>';
+  }
+  h += residentProjets(d.projets);
+
+  // Le détail de l'immeuble (chiffres, graphiques, PV) est replié : la page reste courte et lisible.
+  var plus = residentMacro(d.immeuble);
+  if(d.pvs.length){
+    plus += '<div class="card"><div class="h2">Comptes rendus (PV)</div>'+d.pvs.map(function(p){
+      return '<p><a target="_blank" href="'+esc(p.url)+'">📄 '+esc(p.nom)+'</a></p>';
+    }).join('')+'</div>';
+  }
+  if(plus) h += '<details class="card"><summary class="btn sec" style="margin-top:0">Voir les comptes de l\'immeuble</summary>'+plus+'</details>';
+  if(d.page) h += '<a class="btn sec" target="_blank" href="'+esc(d.page)+'">Page de la résidence</a>';
+  h += '<p class="muted" style="text-align:center">Ce lien est personnel à votre appartement. Merci de ne pas le partager.</p>';
+  view('Mon appartement', h);
+  if(!R.bureau) $('homeBtn').style.display='none';
+}
+
+/** « Mes documents » (propres à l'appartement) et « Documents de la résidence » (publics). */
+function residentDocs(docs){
+  if(!docs) return '';
+  function group(list){
+    var cats = {}; list.forEach(function(x){ (cats[x.cat]=cats[x.cat]||[]).push(x); });
+    return Object.keys(cats).map(function(c){
+      return '<details style="margin:6px 0"><summary style="cursor:pointer;font-weight:700">📂 '+esc(c)+' <span class="muted">('+cats[c].length+')</span></summary><div class="list">'+
+        cats[c].map(function(x){
+          return '<div class="item" style="display:flex;align-items:center;gap:10px"><div style="flex:1;min-width:0"><div style="overflow:hidden;text-overflow:ellipsis">'+esc(x.label)+'</div>'+
+            (x.date?'<span class="muted">'+esc(x.date)+'</span>':'')+'</div><button class="btn small sec" style="margin:0" onclick="openDoc(\''+esc(x.url)+'\')">Ouvrir</button></div>';
+        }).join('')+'</div></details>';
+    }).join('');
+  }
+  var h = '<div class="card"><div class="h2">📂 Mes documents</div>'+
+    '<button class="btn pri" style="margin-top:4px" onclick="residentReleveDl()">📄 Mon relevé de compte (PDF)</button>'+
+    (docs.miens.length ? group(docs.miens) : '<p class="muted">Vos reçus et documents apparaîtront ici.</p>')+'</div>';
+  if(docs.residence.length) h += '<div class="card"><div class="h2">🏢 Documents de la résidence</div>'+group(docs.residence)+'</div>';
+  return h;
+}
+function residentReleveDl(){
+  busy(true);
+  rCall('residentReleve', 'monappart.releve').then(function(res){
+    busy(false);
+    if(!res.ok){ if(res.error==='SESSION_EXPIREE') return residentPin(R.r); return showErr(res.error); }
+    showDocSheet(res.data);
+  }, function(e){ busy(false); showErr(e.message); });
+}
+
+var PRJ_ICO = { 'à l\'étude':'💡', 'devis en cours':'📑', 'à voter en AG':'🗳️', 'voté':'✅', 'en cours':'🏗️', 'terminé':'✔️', 'abandonné':'—' };
+function projetCard(p, showDevis){
+  var dv = p.devis||[];
+  return '<div class="item"><b>'+(PRJ_ICO[p.statut]||'')+' '+esc(p.titre)+'</b> <span class="chip" style="padding:2px 10px;font-size:13px;cursor:default">'+esc(p.statut)+'</span>'+
+    (p.description?'<br><span>'+esc(p.description)+'</span>':'')+
+    '<br><span class="muted">'+(p.date?'Prévu : '+esc(p.date):'Date à fixer')+(p.budget?' · budget estimé '+dh(p.budget):'')+(p.termine?' · terminé le '+esc(p.termine):'')+'</span>'+
+    (showDevis && dv.length?'<div style="margin-top:6px"><span class="muted">'+dv.length+' devis reçu(s) :</span>'+dv.map(function(x){
+      return '<br>• '+esc(x.prestataire)+' – <b>'+dh(x.montant)+'</b>'+(x.retenu?' <b class="st-a_jour">✓ retenu</b>':'')+(x.document?' · <a target="_blank" href="'+esc(x.document)+'">voir le devis</a>':'');
+    }).join('')+'</div>':'')+'</div>';
+}
+function residentProjets(pr){
+  if(!pr || (!pr.avenir.length && !pr.realises.length)) return '';
+  var h = '';
+  if(pr.avenir.length) h += '<div class="card"><div class="h2">🏗️ Prochains travaux et projets</div><div class="list">'+pr.avenir.map(function(p){ return projetCard(p, true); }).join('')+'</div></div>';
+  if(pr.realises.length) h += '<div class="card"><div class="h2">✔️ Travaux réalisés récemment</div><div class="list">'+pr.realises.map(function(p){ return projetCard(p, false); }).join('')+'</div></div>';
+  return h;
+}
+
+/** L'immeuble en chiffres : uniquement des totaux. */
+function residentMacro(im){
+  var h = '<div class="card"><div class="h2">L\'immeuble en chiffres</div><div class="kpis">'+
+    '<div class="kpi">Solde du compte<b>'+dh(im.solde)+'</b></div>'+
+    '<div class="kpi">Appartements à jour<b>'+im.ajour+' / '+im.total+'</b><span class="muted">'+im.enRetard+' en retard</span></div>'+
+    '<div class="kpi">Reste à encaisser (tous)<b class="'+(im.totalDu>0?'st-retard':'')+'">'+dh(im.totalDu)+'</b></div>'+
+    '<div class="kpi">'+im.annee+'<b style="font-size:16px">+ '+dh(im.encAn)+'<br>− '+dh(im.depAn)+'</b><span class="muted">encaissé / dépensé</span></div></div>'+
+    (im.bilan?'<p class="muted">'+esc(im.bilanMois)+' : encaissé '+dh(im.bilan.encaisse)+' · dépensé '+dh(im.bilan.depense)+'</p>':'')+'</div>';
+  if(im.serie && im.serie.length){
+    h += '<div class="card"><div class="h2">Encaissements et dépenses, mois par mois</div>'+chart(im.serie)+
+      '<div class="legend"><span><i class="c c-P"></i>Encaissé</span><span><i class="c c-R"></i>Dépensé</span><span><i style="display:inline-block;width:18px;height:3px;background:#2c4f7c"></i>Solde du compte</span></div></div>';
+  }
+  if(im.taux && im.taux.length){
+    h += '<div class="card"><div class="h2">Cotisations payées, mois par mois</div>'+im.taux.map(function(t){
+      var pct = t.total ? Math.round(t.payes/t.total*100) : 0;
+      return '<div style="margin:6px 0"><div style="display:flex;justify-content:space-between;font-size:15px"><span>'+esc(t.label)+'</span><b>'+t.payes+' / '+t.total+' ('+pct+' %)</b></div>'+
+        '<div style="background:#efe6d6;border-radius:2px;height:10px"><div style="width:'+pct+'%;height:10px;border-radius:6px;background:#2f6b3a"></div></div></div>';
+    }).join('')+'<p class="muted">Part des appartements dont la cotisation du mois est réglée à ce jour.</p></div>';
+  }
+  h += catCard({ parCategorie: im.parCategorie, kpi: { annee: im.annee } });
+  if(im.travaux && im.travaux.length){
+    h += '<div class="card"><div class="h2">Travaux et incidents en cours</div><div class="list">'+im.travaux.map(function(t){
+      return '<div class="item">🛠️ <b>'+esc(t.titre)+'</b><br><span class="muted">signalé le '+esc(t.date)+' · '+esc(t.statut)+'</span></div>';
+    }).join('')+'</div></div>';
+  }
+  return h;
+}
+
+// ---------- formulaires copropriétaire ----------
+function rForm(kind){
+  var box = $('rform');
+  if(kind==='paiement'){
+    box.innerHTML = '<div class="card"><div class="h2">Signaler un paiement</div>'+
+      '<p class="muted">Le trésorier vérifiera le paiement sur le compte du syndic, puis vous recevrez votre reçu.</p>'+
+      '<label>Montant (DH)</label><input id="rs_m" type="number" inputmode="decimal" min="1" step="0.01">'+
+      '<div class="row" id="rs_q"></div>'+
+      '<label>Date du paiement</label><input id="rs_d" type="date" value="'+today()+'">'+
+      '<label>Mode</label><select id="rs_mode"><option value="virement">Virement</option><option value="depot">Dépôt à la banque</option></select>'+
+      '<label>Référence (facultatif)</label><input id="rs_ref" type="text">'+
+      fileField('rs_f','Photo de la preuve (obligatoire)','Avis de virement, capture de l\'application bancaire ou bordereau de dépôt.')+
+      '<label>Commentaire (facultatif)</label><input id="rs_c" type="text">'+
+      '<button class="btn pri" id="rs_go">Envoyer</button></div>';
+    var q=[['1 mois',R.data.mensuel],['3 mois',R.data.mensuel*3],['12 mois',R.data.mensuel*12]];
+    if(R.data.appartement.du>0) q.unshift(['Reste à payer', R.data.appartement.du]);
+    $('rs_q').innerHTML = q.map(function(x){ return '<span class="chip" data-v="'+x[1]+'">'+x[0]+' · '+dh(x[1])+'</span>'; }).join('');
+    Array.prototype.forEach.call(document.querySelectorAll('#rs_q .chip'), function(c){ c.onclick=function(){ $('rs_m').value=c.getAttribute('data-v'); }; });
+    $('rs_go').onclick = function(){
+      if(!(Number($('rs_m').value)>0)) return showErr('Indiquez le montant.');
+      readFile($('rs_f')).then(function(f){
+        if(!f) throw new Error('Ajoutez la photo de la preuve.');
+        busy(true);
+        return rCall('residentSignalerPaiement', 'monappart.signaler', { montant:$('rs_m').value, date:$('rs_d').value, mode:$('rs_mode').value, reference:$('rs_ref').value, commentaire:$('rs_c').value, preuve:f });
+      }).then(function(x){
+        busy(false);
+        if(!x.ok){ if(x.error==='SESSION_EXPIREE') return residentPin(R.r); return showErr(x.error); }
+        R.bureau ? go('monappart') : residentLoad(R.session);
+      }).catch(function(e){ busy(false); showErr(e.message); });
+    };
+  } else {
+    box.innerHTML = '<div class="card"><div class="h2">Envoyer une demande au syndic</div>'+
+      '<label>Type</label><select id="rd_t"><option>Question</option><option>Signaler un problème</option><option>Demander un document</option><option>Autre</option></select>'+
+      '<label>Votre message</label><textarea id="rd_m" style="min-height:120px" placeholder="ex. La lumière du 3e étage ne fonctionne plus."></textarea>'+
+      fileField('rd_f','Photo (facultatif)')+
+      '<button class="btn pri" id="rd_go">Envoyer</button></div>';
+    $('rd_go').onclick = function(){
+      readFile($('rd_f')).then(function(f){
+        busy(true);
+        return rCall('residentDemande', 'monappart.demande', { type:$('rd_t').value, message:$('rd_m').value, photo:f });
+      }).then(function(x){
+        busy(false);
+        if(!x.ok){ if(x.error==='SESSION_EXPIREE') return residentPin(R.r); return showErr(x.error); }
+        R.bureau ? go('monappart') : residentLoad(R.session);
+      }).catch(function(e){ busy(false); showErr(e.message); });
+    };
+  }
+  box.scrollIntoView({behavior:'smooth'});
+}
+
+// ---------- Côté bureau : bouton « Lien copropriétaire » dans la fiche appartement ----------
+function lienCopro(id){
+  guard(api('resident.lien',{id:id}).then(function(r){
+    $('copro_out').innerHTML = '<label>Lien de consultation (à envoyer au copropriétaire uniquement)</label>'+
+      '<input type="text" readonly value="'+esc(r.url)+'" onclick="this.select()">'+
+      '<a class="btn wa" target="_blank" href="'+esc(r.whatsapp)+'">Envoyer le lien par WhatsApp</a>'+
+      '<p class="muted">Générer un nouveau lien désactive l\'ancien et efface le code du copropriétaire.</p>';
+  }));
+}
+
+// ---------- Côté bureau : plusieurs personnes par appartement ----------
+function accesAppart(id){
+  guard(api('resident.acces.liste',{id:id}).then(function(list){
+    $('acc_out').innerHTML = '<div class="card"><p class="muted">Chaque personne a son propre lien et son propre code. Désactiver une personne ne touche pas les autres.</p>'+
+      (list.length ? list.map(function(x){
+        return '<div class="row" style="align-items:center"><span><b>'+esc(x.nom||'—')+'</b>'+(x.principal?' <span class="muted">(payeur)</span>':'')+
+          '<br><span class="muted">'+(x.active?'code choisi':(x.envoyeLe?'lien envoyé, pas encore ouvert':'lien pas encore envoyé'))+'</span></span>'+
+          (x.whatsapp && !x.active?'<a class="btn small wa" target="_blank" href="'+esc(x.whatsapp)+'">WhatsApp</a>':'')+
+          (x.principal?'':'<button class="btn small danger" onclick="accesRevoquer(\''+esc(id)+'\',\''+esc(x.acces)+'\')">Désactiver</button>')+'</div>';
+      }).join('') : '<p>Aucun lien pour l\'instant (utilisez « Lien copropriétaire » pour le payeur).</p>')+
+      '<label>Ajouter une personne (conjoint, enfant, locataire…)</label><input id="acc_nom" placeholder="Nom"><input id="acc_tel" type="tel" placeholder="Téléphone (06…)" style="margin-top:8px">'+
+      '<button class="btn pri" id="acc_ok">Créer son lien</button><div id="acc_new"></div></div>';
+    $('acc_ok').onclick = function(){
+      guard(api('resident.acces.ajouter',{id:id, nom:$('acc_nom').value, tel:$('acc_tel').value}).then(function(r){
+        $('acc_new').innerHTML = '<label>Lien de cette personne (à ne transmettre qu\'à elle)</label><input type="text" readonly value="'+esc(r.url)+'" onclick="this.select()">'+
+          (r.whatsapp?'<a class="btn wa" target="_blank" href="'+esc(r.whatsapp)+'">Envoyer par WhatsApp</a>':'');
+      }));
+    };
+  }));
+}
+function accesRevoquer(id, acc){ guard(api('resident.acces.revoquer',{acces:acc}).then(function(){ accesAppart(id); })); }
+
+// ---------- Côté bureau : envoi des liens à tous les copropriétaires ----------
+ROUTES.liensCopro = function(filtre){
+  guard(api('residents.liste').then(function(list){
+    var f = filtre || 'aenvoyer';
+    var nLien = list.filter(function(x){return x.lien;}).length, nAct = list.filter(function(x){return x.active;}).length;
+    var nEnv = list.filter(function(x){return x.envoyeLe && !x.active;}).length;
+    var aEnvoyer = list.filter(function(x){ return x.lien && !x.active && !x.envoyeLe; });
+    var avecEmail = aEnvoyer.filter(function(x){ return x.email; }).length;
+    var rows = list.filter(function(x){
+      if(f==='aenvoyer') return !x.active && !x.envoyeLe;
+      if(f==='envoye') return x.envoyeLe && !x.active;
+      if(f==='active') return x.active;
+      return true;
+    });
+    var h = '<div class="card kpis"><div class="kpi">Liens créés<b>'+nLien+' / '+list.length+'</b></div><div class="kpi">Activés<b class="st-a_jour">'+nAct+'</b><span class="muted">code choisi</span></div>'+
+      '<div class="kpi">Envoyés, pas activés<b>'+nEnv+'</b></div><div class="kpi">À envoyer<b>'+aEnvoyer.length+'</b></div></div>';
+    if(nLien < list.length) h += '<button class="btn pri" onclick="genLiens()">1. Générer les liens manquants ('+(list.length-nLien)+')</button>';
+    if(avecEmail) h += '<button class="btn pri" onclick="emailLiens()">'+(nLien<list.length?'2. ':'')+'Envoyer par e-mail à ceux qui ont une adresse ('+avecEmail+')</button>';
+    h += '<p class="muted">Pour les autres : touchez « WhatsApp » sur chaque ligne, puis « envoyer » dans WhatsApp. La ligne passe en « envoyé ». Un lien déjà activé ne peut plus être affiché : en cas de problème, générez-en un nouveau depuis la fiche de l\'appartement.</p>';
+    h += '<div class="row" style="margin:8px 0">'+[['aenvoyer','À envoyer'],['envoye','Envoyés, pas activés'],['active','Activés'],['tous','Tous']].map(function(c){
+      return '<span class="chip" style="'+(c[0]===f?'background:var(--pri);color:#fff':'')+'" onclick="go(\'liensCopro\',\''+c[0]+'\')">'+c[1]+'</span>'; }).join('')+'</div>';
+    h += '<div class="card list">'+(rows.length?rows.map(function(x){
+      var st = x.active ? '<span class="st-a_jour">✓ activé</span>' : x.envoyeLe ? '<span class="muted">envoyé le '+esc(x.envoyeLe)+'</span>' : x.lien ? '<span class="muted">à envoyer</span>' : '<span class="st-retard">pas de lien</span>';
+      return '<div class="item" style="display:flex;align-items:center;gap:10px"><div style="flex:1;min-width:0"><b>'+esc(x.id)+'</b> '+esc(x.nom)+'<br>'+st+
+        (x.email?' <span class="muted">· ✉ e-mail</span>':'')+(!x.tel?' <span class="st-retard">· pas de téléphone</span>':'')+'</div>'+
+        (x.whatsapp?'<a class="btn small wa" style="margin:0" target="_blank" href="'+esc(x.whatsapp)+'" onclick="markSent(\''+esc(x.id)+'\')">WhatsApp</a>':'')+'</div>';
+    }).join(''):'<p class="muted">Aucun appartement dans cette liste.</p>')+'</div>';
+    view('Liens copropriétaires', h);
+  }));
+};
+function genLiens(){ guard(api('residents.generer').then(function(r){ go('liensCopro','aenvoyer'); setTimeout(function(){ showErr('✓ '+r.generes+' lien(s) créé(s).'); }, 500); })); }
+function emailLiens(){ guard(api('residents.email').then(function(r){ go('liensCopro','aenvoyer'); setTimeout(function(){ showErr('✓ '+r.envoyes+' e-mail(s) envoyé(s).'+(r.limite?' Limite du jour atteinte : relancez demain pour les suivants.':'')); }, 500); })); }
+function markSent(id){ api('residents.marquer',{id:id}).then(function(){ setTimeout(function(){ go('liensCopro','aenvoyer'); }, 1500); }).catch(function(){}); }
+
+// ---------- Côté bureau : paiements signalés ----------
+ROUTES.signalements = function(){
+  guard(api('signalements.liste').then(function(list){
+    list.forEach(function(x){ SIG_TEL[x.id] = x.tel; });
+    var pend = list.filter(function(s){ return s.statut==='en attente'; }), done = list.filter(function(s){ return s.statut!=='en attente'; });
+    var h = '<p class="muted">Vérifiez chaque paiement sur le relevé bancaire avant de le valider. Valider crée le paiement et le reçu.</p>';
+    h += pend.length ? pend.map(function(s){
+      return '<div class="card"><b>'+esc(s.appartement)+' – '+esc(s.nom)+'</b><br>Signalé le '+esc(s.date)+(s.du>0?' · <span class="st-retard">dû '+dh(s.du)+'</span>':'')+
+        '<div class="kpis" style="margin-top:8px"><div class="kpi">Montant<b>'+dh(s.montant)+'</b></div><div class="kpi">Payé le<b style="font-size:18px">'+esc(s.datePaiementFr)+'</b><span class="muted">'+esc(s.mode)+'</span></div></div>'+
+        (s.reference?'<p class="muted">Réf. : '+esc(s.reference)+'</p>':'')+(s.commentaire?'<p>« '+esc(s.commentaire)+' »</p>':'')+
+        (s.preuve?'<a class="btn sec" target="_blank" href="'+esc(s.preuve)+'">📎 Voir la preuve</a>':'')+
+        '<details><summary class="btn small sec" style="display:inline-block">Corriger le montant ou la date</summary><label>Montant (DH)</label><input id="sv_m_'+esc(s.id)+'" type="number" value="'+esc(s.montant)+'"><label>Date</label><input id="sv_d_'+esc(s.id)+'" type="date" value="'+esc(s.datePaiement)+'"></details>'+
+        '<button class="btn pri" onclick="validerSig(\''+esc(s.id)+'\')">✓ Valider (paiement reçu)</button>'+
+        '<label>Motif du refus (visible par le copropriétaire)</label><input id="sr_'+esc(s.id)+'" type="text" placeholder="ex. virement non reçu sur le compte">'+
+        '<button class="btn danger" onclick="refuserSig(\''+esc(s.id)+'\')">✗ Refuser</button><div id="sres_'+esc(s.id)+'"></div></div>';
+    }).join('') : '<div class="card">✔ Aucun paiement à vérifier.</div>';
+    if(done.length) h += '<div class="card"><div class="h2">Déjà traités</div><div class="list">'+done.slice(0,20).map(function(s){
+      return '<div class="item">'+esc(s.date)+' · '+esc(s.appartement)+' · '+dh(s.montant)+' · <b class="'+(s.statut==='refusé'?'st-retard':'st-a_jour')+'">'+esc(s.statut)+'</b>'+(s.recu?' (reçu '+esc(s.recu)+')':'')+(s.motif?' – '+esc(s.motif):'')+'<span class="muted"> · '+esc(s.traitePar||'')+'</span></div>';
+    }).join('')+'</div></div>';
+    view('Paiements signalés', h);
+  }));
+};
+function validerSig(id){
+  var m=$('sv_m_'+id), d=$('sv_d_'+id);
+  guard(api('signalement.valider',{id:id, montant:m&&m.value, date:d&&d.value}).then(function(r){
+    view('Paiement validé', '<div class="card ok-box"><p class="big">✔ '+esc(r.numero)+'</p><p>Période : <b>'+esc(r.mois)+'</b></p>'+aptCard(r.apres)+
+      (r.lien?'<a class="btn sec" target="_blank" href="'+esc(r.lien)+'">Voir le reçu PDF</a>':'')+waBtn(r.whatsapp,'Envoyer le reçu par WhatsApp')+'</div>'+
+      '<button class="btn sec" onclick="go(\'signalements\')">Retour aux paiements signalés</button>');
+  }));
+}
+var SIG_TEL = {};
+function refuserSig(id){ guard(api('signalement.refuser',{id:id, motif:$('sr_'+id).value}).then(function(){
+  var tel = SIG_TEL[id];
+  if(!tel){ go('signalements'); return; }
+  view('Paiement refusé', '<div class="card ok-box"><p>Le refus et son motif sont visibles sur la page du copropriétaire.</p></div>'+
+    '<a class="btn wa" target="_blank" href="'+esc(waLink(tel,'Bonjour, le paiement que vous avez signalé n’a pas pu être confirmé. Le motif est indiqué sur votre page (lien habituel). Merci.\n'+mySig('tresorier')))+'">Le prévenir par WhatsApp</a>'+
+    '<button class="btn sec" onclick="go(\'signalements\')">Retour aux paiements signalés</button>');
+})); }
+
+// ---------- Côté bureau : demandes des copropriétaires ----------
+ROUTES.demandes = function(){
+  guard(api('demandes.liste').then(function(list){
+    var open = list.filter(function(s){ return s.statut!=='traitée'; }), done = list.filter(function(s){ return s.statut==='traitée'; });
+    list.forEach(function(s){ DEM_TEL[s.id] = s.tel; });
+    var h = open.length ? open.map(function(s){
+      return '<div class="card"><b>'+esc(s.appartement)+' – '+esc(s.nom)+'</b> · '+esc(s.date)+'<br><b>'+esc(s.type)+'</b> · '+esc(DEM_ST[s.statut]||s.statut)+
+        '<p>« '+esc(s.message).replace(/\n/g,'<br>')+' »</p>'+(s.photo?'<a target="_blank" href="'+esc(s.photo)+'">📷 Voir la photo</a>':'')+
+        (s.reponse?'<p class="muted">Déjà répondu : '+esc(s.reponse).replace(/\n/g,'<br>')+'</p>':'')+(s.incident?'<p class="muted">Incident lié : '+esc(s.incident)+'</p>':'')+
+        '<label>Réponse (visible par le copropriétaire)</label><textarea id="dr_'+esc(s.id)+'" style="min-height:80px"></textarea>'+
+        '<label>Statut</label><select id="ds_'+esc(s.id)+'">'+opt(['reçue','en cours','traitée'], s.statut==='reçue'?'en cours':s.statut)+'</select>'+
+        '<button class="btn pri" onclick="repondreDem(\''+esc(s.id)+'\')">Enregistrer</button>'+
+        (s.type==='Signaler un problème'&&!s.incident?'<button class="btn sec" onclick="incidentDem(\''+esc(s.id)+'\')">🛠️ Créer un incident à partir de cette demande</button>':'')+
+        (s.tel?'<a class="btn wa" target="_blank" href="'+esc(waLink(s.tel,'Bonjour, au sujet de votre demande ('+s.type+') : \n\n'+mySig('secretaire')))+'">Répondre aussi par WhatsApp</a>':'')+'</div>';
+    }).join('') : '<div class="card">✔ Aucune demande en attente.</div>';
+    if(done.length) h += '<div class="card"><div class="h2">Traitées</div><div class="list">'+done.slice(0,20).map(function(s){
+      return '<div class="item">'+esc(s.date)+' · '+esc(s.appartement)+' · '+esc(s.type)+'<br><span class="muted">'+esc(String(s.message).slice(0,100))+'</span></div>';
+    }).join('')+'</div></div>';
+    view('Demandes des copropriétaires', h);
+  }));
+};
+var DEM_TEL = {};
+function repondreDem(id){ guard(api('demande.repondre',{id:id, reponse:$('dr_'+id).value, statut:$('ds_'+id).value}).then(function(){
+  var tel = DEM_TEL[id];
+  if(!tel){ go('demandes'); return; }
+  view('Réponse enregistrée', '<div class="card ok-box"><p>✓ La réponse est visible sur la page du copropriétaire.</p></div>'+
+    '<a class="btn wa" target="_blank" href="'+esc(waLink(tel,'Bonjour, le syndic a répondu à votre demande. Ouvrez votre lien habituel pour lire la réponse. Merci.\n'+mySig('secretaire')))+'">Le prévenir par WhatsApp</a>'+
+    '<button class="btn sec" onclick="go(\'demandes\')">Retour aux demandes</button>');
+})); }
+function incidentDem(id){ guard(api('demande.incident',{id:id}).then(function(r){ go('demandes'); setTimeout(function(){ showErr('Incident '+r.incident+' créé (Secrétariat → Incidents et travaux).'); }, 500); })); }
+</script>
+
+<script>
+/** Touche « OK / Aller / Entrée » du clavier du téléphone : valide l'écran, comme le bouton principal. */
+function boutonPrincipal(el){
+  var box = el.closest('#rform, .card, #app') || document.getElementById('app');
+  return box.querySelector('button.btn.pri:not([disabled])');
+}
+document.addEventListener('keydown', function(e){
+  if(e.key !== 'Enter' || e.isComposing) return;
+  var t = e.target;
+  if(!t || t.tagName !== 'INPUT' || /^(checkbox|radio|file|button|submit)$/.test(t.type)) return;
+  var b = boutonPrincipal(t);
+  if(!b) return;
+  e.preventDefault(); t.blur(); b.click();
+});
+/** Code à 4 chiffres : dès le 4e chiffre, on entre (écran de connexion, pas à la création du code). */
+document.addEventListener('input', function(e){
+  var t = e.target;
+  if(!t || !t.classList || !t.classList.contains('pin')) return;
+  if(t.value.replace(/\D/g,'').length !== 4) return;
+  if(document.querySelectorAll('#app input.pin').length !== 1) return;   // création : deux champs, on laisse « Entrer »
+  var b = boutonPrincipal(t); if(b){ t.blur(); setTimeout(function(){ b.click(); }, 150); }
+});
+start();
+</script>
+</body>
+</html>
