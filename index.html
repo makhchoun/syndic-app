@@ -200,7 +200,12 @@ function showErr(msg){ var e=document.querySelector('.err'); if(e) e.remove(); v
 function has(){ var roles=(S.me&&S.me.roles)||[]; for(var i=0;i<arguments.length;i++){ if(roles.indexOf(arguments[i])>=0) return true; } return roles.indexOf('admin')>=0; }
 function saveStore(){ try{ localStorage.setItem(STORE, JSON.stringify({k:S.k, session:S.session})); }catch(e){} }
 function loadStore(){ try{ return JSON.parse(localStorage.getItem(STORE)||'null'); }catch(e){ return null; } }
-function clearStore(){ try{ localStorage.removeItem(STORE); }catch(e){} }
+function clearStore(){ try{ localStorage.removeItem(STORE); localStorage.removeItem(CCSTORE()); }catch(e){} }
+/** Écrans déjà vus, gardés sur le téléphone : à la réouverture, ils s'affichent tout de suite puis se mettent à jour. */
+function CCSTORE(){ return 'syndic.cc.'+(S.k||'').slice(0,16); }
+var ccTimer = null;
+function persistCC(){ clearTimeout(ccTimer); ccTimer = setTimeout(function(){ try{ localStorage.setItem(CCSTORE(), JSON.stringify(CC)); }catch(e){} }, 300); }
+function loadCC(){ try{ var o = JSON.parse(localStorage.getItem(CCSTORE())||'null'); if(o){ var now = Date.now(); Object.keys(o).forEach(function(k){ o[k].t = now; }); CC = o; } }catch(e){} }
 
 function call(fn){
   var args = Array.prototype.slice.call(arguments,1);
@@ -235,7 +240,7 @@ function userIsEditing(){
 }
 function api(action, payload){
   var key = READS[action] ? action+'|'+JSON.stringify(payload||{}) : null;
-  if(!key){ CC = {}; CC_GEN++; }                  // écriture : on oublie tout
+  if(!key){ CC = {}; CC_GEN++; persistCC(); }     // écriture : on oublie tout
   var gen = CC_GEN;
   var hit = key && CC[key];
   if(hit && Date.now()-hit.t < CC_TTL){
@@ -243,7 +248,7 @@ function api(action, payload){
     if(!S.silent && Date.now()-hit.t > 5000) rawApi(action, payload).then(function(d){   // donnée toute récente : pas de nouvel aller-retour
       if(gen !== CC_GEN) return;
       var changed = JSON.stringify(d) !== JSON.stringify(hit.data);
-      CC[key] = { t: Date.now(), data: d };
+      CC[key] = { t: Date.now(), data: d }; persistCC();
       // mise à jour discrète : seulement en haut de page, sans saisie en cours, et sans faire bouger la page
       if(changed && route && S.route === route && !userIsEditing() && window.scrollY < 80 && ROUTES[route.name]){
         var y = window.scrollY; S.silent = true;
@@ -256,14 +261,14 @@ function api(action, payload){
   busySoon(true);
   return rawApi(action, payload).then(function(d){
     busySoon(false);
-    if(key && gen === CC_GEN) CC[key] = { t: Date.now(), data: d };
+    if(key && gen === CC_GEN){ CC[key] = { t: Date.now(), data: d }; persistCC(); }
     return d;
   }, function(e){ busySoon(false); throw e; });
 }
 /** Même chose qu'api(), mais renvoie {ok, data | error} (sans exception). */
 function apiOk(action, payload){ return api(action, payload).then(function(d){ return {ok:true, data:d}; }, function(e){ return {ok:false, error:e.message}; }); }
 /** Préchargement discret des écrans les plus utilisés. */
-function prefetch(list){ list.forEach(function(x){ if(CC[x[0]+'|'+JSON.stringify(x[1]||{})]) return; rawApi(x[0], x[1]||{}).then(function(d){ CC[x[0]+'|'+JSON.stringify(x[1]||{})] = { t: Date.now(), data: d }; }).catch(function(){}); }); }
+function prefetch(list){ list.forEach(function(x){ if(CC[x[0]+'|'+JSON.stringify(x[1]||{})]) return; rawApi(x[0], x[1]||{}).then(function(d){ CC[x[0]+'|'+JSON.stringify(x[1]||{})] = { t: Date.now(), data: d }; persistCC(); }).catch(function(){}); }); }
 function guard(p){ return p.catch(function(e){ showErr(e.message); }); }
 
 /** Lit un fichier (photo réduite à 1600 px, ou PDF) en base64 */
@@ -330,10 +335,9 @@ function start(){
   var st = loadStore();
   if(BOOT.k){
     S.k = BOOT.k;
-    if(st && st.k===BOOT.k && st.session){ S.session=st.session; return tryResume(pinScreen); }
+    if(st && st.k===BOOT.k && st.session){ S.session=st.session; loadCC(); return home(); }
     return pinScreen();
   }
-  if(st && st.session){ S.k=st.k; S.session=st.session; return tryResume(noAccess); }
   noAccess();
 }
 function tryResume(fallback){
@@ -363,7 +367,7 @@ function pinScreen(){
       call(setup?'authSetPin':'authLoginPin', S.k, p).then(function(r){
         busy(false);
         if(!r.ok) return showErr(r.error);
-        S.session=r.data.session; saveStore(); home();
+        S.session=r.data.session; saveStore(); loadCC(); home();
       }, function(e){ busy(false); showErr(e.message); });
     };
   }, function(e){ busy(false); noAccess(e.message); });
@@ -408,15 +412,33 @@ function go(name, arg, fromHistory){
 
 /** Après connexion : profil, puis tableau de bord global ; puis préchargement des écrans courants. */
 function home(){
-  api('moi').then(function(me){
-    S.me = me; go('dashboard');
+  var cm = CC['moi|{}'];
+  if(cm){ S.me = cm.data; go('dashboard'); }      // déjà vu sur ce téléphone : affichage immédiat
+  if(!cm) busySoon(true);
+  call('apiBatch', S.session, [['moi',{}], ['dashboard.global',{}]]).then(function(res){
+    busySoon(false);
+    var r0 = res[0], r1 = res[1];
+    if(!r0.ok){
+      if(r0.error==='SESSION_EXPIREE'){ CC={}; clearStore(); S.session=null; return start(); }
+      return showErr(r0.error);
+    }
+    var dk = 'dashboard.global|{}', old = CC[dk];
+    var changed = !cm || JSON.stringify(cm.data)!==JSON.stringify(r0.data) || !old || (r1.ok && JSON.stringify(old.data)!==JSON.stringify(r1.data));
+    CC['moi|{}'] = { t: Date.now(), data: r0.data };
+    if(r1.ok) CC[dk] = { t: Date.now(), data: r1.data };
+    persistCC();
+    S.me = r0.data;
+    if(!cm) go('dashboard');
+    else if(changed && S.route && S.route.name==='dashboard' && window.scrollY < 80 && !userIsEditing()){
+      S.silent = true; try{ ROUTES.dashboard(S.route.arg); }catch(e){} setTimeout(function(){ S.silent = false; }, 400);
+    }
     setTimeout(function(){
       var l = [['mouvements.liste',{}], ['reunions.liste',{}], ['appartements.liste',{}]];
       if(has('tresorier')) l.push(['relances.liste',{}], ['categories.liste',{}], ['depense.liste',{manquants:true}]);
       if(has('secretaire')) l.push(['demandes.liste',{}], ['projets.liste',{}]);
       prefetch(l);
     }, 1500);
-  }).catch(function(e){ showErr(e.message); });
+  }, function(e){ busySoon(false); showErr(e.message); });
 }
 ROUTES.home = function(){ go('dashboard'); };
 
@@ -1697,13 +1719,18 @@ function residentPin(r){
 
 function residentLoad(session){
   R.session = session;
-  busy(true);
+  var ck = 'syndic.rview.'+String(R.r||'').slice(0,16), vu = null;
+  try{ vu = JSON.parse(localStorage.getItem(ck)||'null'); }catch(e){}
+  if(vu){ R.data = vu; residentRender(); }          // déjà vu sur ce téléphone : affichage immédiat
+  else busy(true);
   call('residentView', session).then(function(res){
     busy(false);
-    if(!res.ok){ try{ localStorage.removeItem(RSTORE); }catch(e){} return residentPin(R.r); }
+    if(!res.ok){ try{ localStorage.removeItem(RSTORE); localStorage.removeItem(ck); }catch(e){} return residentPin(R.r); }
+    var changed = !vu || JSON.stringify(vu) !== JSON.stringify(res.data);
+    try{ localStorage.setItem(ck, JSON.stringify(res.data)); }catch(e){}
     R.data = res.data;
-    residentRender();
-  }, function(e){ busy(false); view('Syndic','<div class="card"><div class="err">'+esc(e.message)+'</div></div>'); });
+    if(changed && (!vu || (window.scrollY < 80 && !userIsEditing() && !$('rform').innerHTML))){ S.silent = !!vu; residentRender(); S.silent = false; }
+  }, function(e){ busy(false); if(!vu) view('Syndic','<div class="card"><div class="err">'+esc(e.message)+'</div></div>'); });
 }
 
 var SIG_ST = { 'en attente':'En attente de vérification', 'validé':'✓ Confirmé', 'refusé':'✗ Refusé' };
