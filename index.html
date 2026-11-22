@@ -1989,7 +1989,8 @@ function accesAppart(id){
     $('acc_out').innerHTML = '<div class="card"><p class="muted">Chaque personne a son propre lien et son propre code. Désactiver une personne ne touche pas les autres.</p>'+
       (list.length ? list.map(function(x){
         return '<div class="row" style="align-items:center"><span><b>'+esc(x.nom||'—')+'</b>'+(x.principal?' <span class="muted">(payeur)</span>':'')+
-          '<br><span class="muted">'+(x.active?'code choisi':(x.envoyeLe?'lien envoyé, pas encore ouvert':'lien pas encore envoyé'))+'</span></span>'+
+          '<br><span class="muted">'+(x.active?'code choisi':(x.envoyeLe?'lien envoyé, pas encore ouvert':'lien pas encore envoyé'))+
+          ' · '+(x.connexions ? x.connexions+' connexion'+(x.connexions>1?'s':'')+' (dernière le '+esc(x.derniere)+')' : 'jamais connecté')+'</span></span>'+
           (x.whatsapp && !x.active?'<a class="btn small wa" target="_blank" href="'+esc(x.whatsapp)+'">WhatsApp</a>':'')+
           (x.principal?'':'<button class="btn small danger" onclick="accesRevoquer(\''+esc(id)+'\',\''+esc(x.acces)+'\')">Désactiver</button>')+'</div>';
       }).join('') : '<p>Aucun lien pour l\'instant (utilisez « Lien copropriétaire » pour le payeur).</p>')+
@@ -2029,7 +2030,8 @@ ROUTES.liensCopro = function(filtre){
     h += '<div class="card list">'+(rows.length?rows.map(function(x){
       var st = x.active ? '<span class="st-a_jour">✓ activé</span>' : x.envoyeLe ? '<span class="muted">envoyé le '+esc(x.envoyeLe)+'</span>' : x.lien ? '<span class="muted">à envoyer</span>' : '<span class="st-retard">pas de lien</span>';
       return '<div class="item" style="display:flex;align-items:center;gap:10px"><div style="flex:1;min-width:0"><b>'+esc(x.id)+'</b> '+esc(x.nom)+'<br>'+st+
-        (x.email?' <span class="muted">· ✉ e-mail</span>':'')+(!x.tel?' <span class="st-retard">· pas de téléphone</span>':'')+'</div>'+
+        (x.email?' <span class="muted">· ✉ e-mail</span>':'')+(!x.tel?' <span class="st-retard">· pas de téléphone</span>':'')+
+        '<br><span class="muted">'+(x.connexions ? x.connexions+' connexion'+(x.connexions>1?'s':'')+(x.derniere?' · dernière le '+esc(x.derniere.quand)+' par '+esc(x.derniere.qui):'') : 'Jamais connecté')+'</span></div>'+
         (x.whatsapp?'<a class="btn small wa" style="margin:0" target="_blank" href="'+esc(x.whatsapp)+'" onclick="markSent(\''+esc(x.id)+'\')">WhatsApp</a>':'')+'</div>';
     }).join(''):'<p class="muted">Aucun appartement dans cette liste.</p>')+'</div>';
     view('Liens copropriétaires', h);
