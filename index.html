@@ -268,7 +268,14 @@ function api(action, payload){
 /** Même chose qu'api(), mais renvoie {ok, data | error} (sans exception). */
 function apiOk(action, payload){ return api(action, payload).then(function(d){ return {ok:true, data:d}; }, function(e){ return {ok:false, error:e.message}; }); }
 /** Préchargement discret des écrans les plus utilisés. */
-function prefetch(list){ list.forEach(function(x){ if(CC[x[0]+'|'+JSON.stringify(x[1]||{})]) return; rawApi(x[0], x[1]||{}).then(function(d){ CC[x[0]+'|'+JSON.stringify(x[1]||{})] = { t: Date.now(), data: d }; persistCC(); }).catch(function(){}); }); }
+function prefetch(list){
+  var todo = list.filter(function(x){ return !CC[x[0]+'|'+JSON.stringify(x[1]||{})]; });
+  if(!todo.length || !S.session) return;
+  call('apiBatch', S.session, todo).then(function(res){   // un seul aller-retour pour tous les écrans
+    (res||[]).forEach(function(r, i){ if(r && r.ok) CC[todo[i][0]+'|'+JSON.stringify(todo[i][1]||{})] = { t: Date.now(), data: r.data }; });
+    persistCC();
+  }).catch(function(){});
+}
 function guard(p){ return p.catch(function(e){ showErr(e.message); }); }
 
 /** Lit un fichier (photo réduite à 1600 px, ou PDF) en base64 */
@@ -364,10 +371,13 @@ function pinScreen(){
       var p=$('pin').value;
       if(setup && p!==$('pin2').value) return showErr('Les deux codes ne sont pas identiques.');
       busy(true);
-      call(setup?'authSetPin':'authLoginPin', S.k, p).then(function(r){
+      call(setup?'authSetPin':'authLoginPin', S.k, p, [['moi',{}], ['dashboard.global',{}]]).then(function(r){
         busy(false);
         if(!r.ok) return showErr(r.error);
-        S.session=r.data.session; saveStore(); loadCC(); home();
+        S.session=r.data.session; saveStore(); loadCC();
+        var L = r.data.lots;   // profil + tableau de bord déjà reçus avec la connexion
+        if(L && L[0] && L[0].ok){ CC['moi|{}'] = { t: Date.now(), data: L[0].data }; if(L[1] && L[1].ok) CC['dashboard.global|{}'] = { t: Date.now(), data: L[1].data }; persistCC(); }
+        home();
       }, function(e){ busy(false); showErr(e.message); });
     };
   }, function(e){ busy(false); noAccess(e.message); });
@@ -414,6 +424,7 @@ function go(name, arg, fromHistory){
 function home(){
   var cm = CC['moi|{}'];
   if(cm){ S.me = cm.data; go('dashboard'); }      // déjà vu sur ce téléphone : affichage immédiat
+  if(cm && Date.now()-cm.t < 5000){ setTimeout(prechargerEcrans, 1500); return; }   // reçu à l'instant (avec la connexion)
   if(!cm) busySoon(true);
   call('apiBatch', S.session, [['moi',{}], ['dashboard.global',{}]]).then(function(res){
     busySoon(false);
@@ -432,13 +443,16 @@ function home(){
     else if(changed && S.route && S.route.name==='dashboard' && window.scrollY < 80 && !userIsEditing()){
       S.silent = true; try{ ROUTES.dashboard(S.route.arg); }catch(e){} setTimeout(function(){ S.silent = false; }, 400);
     }
-    setTimeout(function(){
+    setTimeout(prechargerEcrans, 1500);
+  }, function(e){ busySoon(false); showErr(e.message); });
+}
+function prechargerEcrans(){
+    (function(){
       var l = [['mouvements.liste',{}], ['reunions.liste',{}], ['appartements.liste',{}]];
       if(has('tresorier')) l.push(['relances.liste',{}], ['categories.liste',{}], ['depense.liste',{manquants:true}]);
       if(has('secretaire')) l.push(['demandes.liste',{}], ['projets.liste',{}]);
       prefetch(l);
-    }, 1500);
-  }, function(e){ busySoon(false); showErr(e.message); });
+    })();
 }
 ROUTES.home = function(){ go('dashboard'); };
 
