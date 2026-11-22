@@ -129,6 +129,7 @@ var SERVEUR = "https://script.google.com/macros/s/AKfycbyi__RKASnF8TeDW7ObxW1B_U
   .rowlink .arrow { color:var(--pri); }
   .muted { color:var(--muted); }
   /* lisibilité (lecteurs âgés) */
+  .card.warn-box { border:2px solid var(--warn); padding:12px 14px; background:rgba(138,90,18,.06); }
   /* onglets : tous visibles, sur deux lignes si besoin (pas de défilement caché) */
   nav { flex-wrap:wrap; overflow-x:visible; } nav button { flex:1 1 auto; padding:10px 12px; }
   .card.accueil { border:none; border-left:3px solid var(--pri); background:rgba(154,74,28,.05); padding:12px 14px; } .accueil-l { margin:0; padding-left:20px; } .accueil-l li { margin:6px 0; } .accueil-l .btn.small { margin:4px 0 0 4px; padding:6px 12px; font-size:16px; }
@@ -179,7 +180,7 @@ var ROUTE_SPACE = { dashboard:'dashboard', comptaVue:'tresorerie', caisse:'treso
 function renderNav(){
   var n=$('nav'); if(!S.session || !S.me){ n.hidden=true; return; }
   var tabs=[['dashboard','Tableau de bord']];
-  if(has('tresorier')) tabs.push(['tresorerie','Trésorerie']);
+  if(has('tresorier','president')) tabs.push(['tresorerie','Trésorerie']);
   if(has('secretaire')) tabs.push(['secretariat','Secrétariat']);
   if(has('admin')) tabs.push(['admin','Admin']);
   if(S.me && S.me.apt) tabs.push(['monappart','Mon appartement']);
@@ -388,7 +389,7 @@ function logout(){ clearStore(); S.session=null; S.me=null; if(S.k && S.k!=='goo
 
 // ---------- navigation ----------
 var ROUTES = {};
-function spaceAllowed(sp){ return sp==='dashboard' || (sp==='monappart' && S.me && S.me.apt) || (sp==='tresorerie'&&has('tresorier')) || (sp==='secretariat'&&has('secretaire')) || (sp==='admin'&&has('admin')); }
+function spaceAllowed(sp){ return sp==='dashboard' || (sp==='monappart' && S.me && S.me.apt) || (sp==='tresorerie'&&has('tresorier','president')) || (sp==='secretariat'&&has('secretaire')) || (sp==='admin'&&has('admin')); }
 /** Bouton « Retour » du téléphone : chaque écran est ajouté à l'historique de l'application
  *  (google.script.history), pour que « Retour » revienne à l'écran précédent au lieu de quitter l'application. */
 var HIST = { ready:false, first:true };
@@ -486,14 +487,26 @@ ROUTES.paiement = function(pre){
     $('save').onclick = function(){
       if(!$('apt').value) return showErr('Choisissez l\'appartement.');
       if(!(Number($('montant').value)>0)) return showErr('Indiquez le montant.');
-      guard(readFile($('preuve')).then(function(f){
-        return api('paiement.creer', { appartement:$('apt').value, montant:$('montant').value, date:$('date').value, mode:$('mode').value, reference:$('ref').value, preuve:f, recuPapier:$('papier').checked?$('papierNo').value:'' });
+      var forcer = !!this.dataset.forcer;
+      readFile($('preuve')).then(function(f){
+        return api('paiement.creer', { appartement:$('apt').value, montant:$('montant').value, date:$('date').value, mode:$('mode').value, reference:$('ref').value, preuve:f, recuPapier:$('papier').checked?$('papierNo').value:'', forcer:forcer });
+      }).catch(function(e){
+        var m = /^\[(signalement:([^\]]+)|doublon)\] (.*)$/.exec(e.message);
+        if(!m) return showErr(e.message);
+        var box = document.createElement('div'); box.className = 'card warn-box';
+        box.innerHTML = '<p><b>Attention, paiement peut-être en double.</b><br>'+esc(m[3])+'</p>'+
+          (m[2] ? '<button class="btn pri" onclick="go(\'signalements\')">Voir et valider son signalement</button>' : '')+
+          '<button class="btn sec" id="forcer">C’est un autre paiement : enregistrer quand même</button>';
+        var old = document.querySelector('.warn-box'); if(old) old.remove();
+        $('app').appendChild(box); box.scrollIntoView({behavior:'smooth'});
+        $('forcer').onclick = function(){ box.remove(); $('save').dataset.forcer = '1'; $('save').click(); };
+        throw null;
       }).then(function(r){
         S.apts=null;
         view('Paiement enregistré', '<div class="card ok-box"><p class="big">✔ '+esc(r.numero)+'</p><p>Période : <b>'+esc(r.mois)+'</b></p>'+
           aptCard(r.apres)+(r.lien?'<a class="btn sec" target="_blank" href="'+esc(r.lien)+'">Voir le reçu PDF</a>':'')+
           waBtn(r.whatsapp,'Envoyer le reçu par WhatsApp')+'</div><button class="btn sec" onclick="go(\'paiement\')">Autre paiement</button>');
-      }));
+      }).catch(function(e){ if(e) showErr(e.message); });
     };
   }));
 };
@@ -1245,6 +1258,12 @@ function refreshMe(then){ api('moi').then(function(me){ S.me = me; then(); }).ca
 ROUTES.tresorerie = function(){ refreshMe(renderTresorerie); };
 ROUTES.secretariat = function(){ refreshMe(renderSecretariat); };
 function renderTresorerie(){
+  if(!has('tresorier')){   // syndic : encaisser et valider les paiements, voir la caisse
+    return view('Trésorerie', '<div class="space-list">'+
+      rowlink('signalements','','Paiements signalés'+(S.me.signalements?' ('+S.me.signalements+')':''),'Envoyés par les copropriétaires, à vérifier')+
+      rowlink('paiement','','Enregistrer un paiement','Virement, dépôt, chèque ou espèces – reçu automatique')+
+      rowlink('caisse','','Espèces en caisse','Argent liquide reçu, à déposer à la banque')+'</div>');
+  }
   view('Trésorerie', '<div class="space-list">'+
     rowlink('signalements','📥','Paiements signalés'+(S.me.signalements?' ('+S.me.signalements+')':''),'Envoyés par les copropriétaires, à vérifier')+
     rowlink('paiement','💰','Enregistrer un paiement','Virement, dépôt, chèque ou espèces – reçu automatique')+
@@ -1981,7 +2000,8 @@ function rForm(kind){
       '<label>Montant (DH)</label><input id="rs_m" type="number" inputmode="decimal" min="1" step="0.01">'+
       '<div class="row" id="rs_q"></div>'+
       '<label>Date du paiement</label><input id="rs_d" type="date" value="'+today()+'">'+
-      '<label>Mode</label><select id="rs_mode"><option value="virement">Virement</option><option value="depot">Dépôt à la banque</option></select>'+
+      '<label>Mode</label><select id="rs_mode" onchange="$(\'rs_aide\').hidden=this.value!==\'especes\'"><option value="virement">Virement</option><option value="depot">Dépôt à la banque</option><option value="cheque">Chèque</option><option value="especes">Espèces (remises au concierge ou au trésorier)</option></select>'+
+      '<p class="muted" id="rs_aide" hidden>Espèces : joignez la <b>photo du reçu</b> que le syndic vous a remis.</p>'+
       '<label>Référence (facultatif)</label><input id="rs_ref" type="text">'+
       fileField('rs_f','Photo de la preuve (obligatoire)','Avis de virement, capture de l\'application bancaire ou bordereau de dépôt.')+
       '<label>Commentaire (facultatif)</label><input id="rs_c" type="text">'+
