@@ -173,7 +173,7 @@ function dh(x){ var n=Math.round((Number(x)||0)*100)/100; return n.toFixed(n%1?2
 function today(){ var d=new Date(); return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2); }
 function busy(on){ $('busy').style.display = on?'flex':'none'; }
 var CURRENT_SPACE = 'dashboard';
-var ROUTE_SPACE = { dashboard:'dashboard', comptaVue:'tresorerie', caisse:'tresorerie', appart:'dashboard', mouvements:'dashboard', afaire:'dashboard', tableau:'dashboard', appartements:'dashboard',
+var ROUTE_SPACE = { dashboard:'dashboard', appels:'tresorerie', avalider:'tresorerie', entretien:'secretariat', rapportAG:'tresorerie', comptaVue:'tresorerie', caisse:'tresorerie', appart:'dashboard', mouvements:'dashboard', afaire:'dashboard', tableau:'dashboard', appartements:'dashboard',
   tresorerie:'tresorerie', compta:'tresorerie', etats:'tresorerie', budget:'tresorerie', rappro:'tresorerie', cloture:'tresorerie', factures:'tresorerie', liensCopro:'tresorerie', signalements:'tresorerie', demandes:'secretariat', paiement:'tresorerie', depense:'tresorerie', justifs:'tresorerie', relances:'tresorerie', decharge:'tresorerie',
   secretariat:'secretariat', reunions:'secretariat', reunionNew:'secretariat', reunion:'secretariat', presences:'secretariat', decisions:'secretariat', incidents:'secretariat', contrats:'secretariat',
   projets:'secretariat', admin:'admin', acces:'admin', donnees:'admin', demarrage:'admin', monappart:'monappart' };
@@ -218,7 +218,7 @@ function call(fn){
 // ---------- Rapidité : cache des lectures dans le navigateur ----------
 // Un écran déjà vu s'affiche tout de suite, puis se met à jour en arrière-plan.
 // Toute écriture (paiement, dépense…) vide ce cache : jamais de donnée périmée après une action.
-var READS = { 'moi':1, 'caisse.etat':1, 'dashboard.global':1, 'appartement.detail':1, 'appartements.liste':1, 'tableau':1, 'mouvements.liste':1, 'relances.liste':1,
+var READS = { 'moi':1, 'appels.liste':1, 'gestion.appart':1, 'depenses.avalider':1, 'equipements.liste':1, 'caisse.etat':1, 'dashboard.global':1, 'appartement.detail':1, 'appartements.liste':1, 'tableau':1, 'mouvements.liste':1, 'relances.liste':1,
   'reunions.liste':1, 'decisions.liste':1, 'incidents.liste':1, 'contrats.liste':1, 'projets.liste':1, 'depense.liste':1, 'paiement.liste':1,
   'messages.liste':1, 'categories.liste':1, 'signalements.liste':1, 'demandes.liste':1, 'etats.exercices':1, 'etats.get':1, 'budget.get':1,
   'rappro.liste':1, 'clotures.liste':1, 'admin.donnees':1, 'residents.liste':1, 'acces.liste':1, 'fichiers.liste':1 };
@@ -466,6 +466,7 @@ ROUTES.paiement = function(pre){
       '<div class="card"><label>Appartement</label><select id="apt">'+aptOptions(pre)+'</select><div id="aptInfo"></div>'+
       '<label>Montant (DH)</label><input id="montant" type="number" inputmode="decimal" min="1" step="0.01">'+
       '<div class="row" id="quick"></div>'+
+      '<div id="pourBox"></div>'+
       '<label>Date du paiement</label><input id="date" type="date" value="'+today()+'">'+
       '<label>Mode</label><select id="mode" onchange="modePaiement()"><option value="virement">Virement</option><option value="depot">Dépôt à la banque</option><option value="cheque">Chèque</option><option value="especes">Espèces (reçu papier)</option></select>'+
       '<p class="muted" id="modeAide" hidden>Espèces : joignez ci-dessous la <b>photo du reçu papier signé</b>. Le copropriétaire recevra aussi le reçu de la plateforme. L’argent est noté « en caisse » jusqu’à son dépôt à la banque.</p>'+
@@ -483,13 +484,19 @@ ROUTES.paiement = function(pre){
       Array.prototype.forEach.call(document.querySelectorAll('#quick .chip'), function(c){ c.onclick=function(){ $('montant').value=c.getAttribute('data-v'); }; });
     }
     $('apt').onchange = refresh; refresh();
+    api('appels.liste').then(function(L){   // appels de fonds ouverts : choisir à quoi sert le paiement
+      var ouverts = (L||[]).filter(function(x){ return x.statut !== 'clos'; });
+      if(!ouverts.length || !$('pourBox')) return;
+      $('pourBox').innerHTML = '<label>Pour</label><select id="pour"><option value="">Cotisation mensuelle</option>'+
+        ouverts.map(function(x){ return '<option value="'+esc(x.id)+'">Appel de fonds : '+esc(x.titre)+'</option>'; }).join('')+'</select>';
+    }).catch(function(){});
     $('papier').onchange = function(){ $('papierBox').style.display = this.checked?'block':'none'; };
     $('save').onclick = function(){
       if(!$('apt').value) return showErr('Choisissez l\'appartement.');
       if(!(Number($('montant').value)>0)) return showErr('Indiquez le montant.');
       var forcer = !!this.dataset.forcer;
       readFile($('preuve')).then(function(f){
-        return api('paiement.creer', { appartement:$('apt').value, montant:$('montant').value, date:$('date').value, mode:$('mode').value, reference:$('ref').value, preuve:f, recuPapier:$('papier').checked?$('papierNo').value:'', forcer:forcer });
+        return api('paiement.creer', { appartement:$('apt').value, montant:$('montant').value, date:$('date').value, mode:$('mode').value, reference:$('ref').value, preuve:f, recuPapier:$('papier').checked?$('papierNo').value:'', forcer:forcer, appel:($('pour')&&$('pour').value)||'' });
       }).catch(function(e){
         var m = /^\[(signalement:([^\]]+)|doublon)\] (.*)$/.exec(e.message);
         if(!m) return showErr(e.message);
@@ -1112,6 +1119,7 @@ function accueil(d){
     var reu = (d.evenements||[]).filter(function(e){ return e.kind==='reunion'; })[0];
     if(reu) ligne('Prochaine réunion : <b>'+esc(reu.date)+'</b> ('+esc(reu.label)+').', 'reunions', 'Voir');
   }
+  if(S.me.avalider && (r.indexOf('president')>=0 || r.indexOf('admin')>=0)) ligne('<b>'+S.me.avalider+'</b> dépense'+(S.me.avalider>1?'s':'')+' à valider (contrôle).', 'avalider', 'Valider');
   if(r.indexOf('admin')>=0 && d.taches) ligne('<b>'+d.taches+'</b> tâche'+(d.taches>1?'s':'')+' à suivre pour tout le bureau.', 'afaire', 'Voir la liste');
   if(!fonctions.length) lignes.push('<li>Vous pouvez tout consulter : les chiffres, les paiements, les réunions. Vous ne modifiez rien.</li>');
   if(!lignes.length) lignes.push('<li>Rien d’urgent aujourd’hui.</li>');
@@ -1249,6 +1257,7 @@ ROUTES.appart = function(id){
       (a.occupant?'<p><b>Occupant</b> : '+esc(a.occupant)+(a.telOccupant?'<br>📞 '+esc(a.telOccupant):'')+'</p>':'')+
       '<p class="muted">Payeur : '+esc(a.payeur)+' · langue des messages : '+(a.langue==='AR'?'arabe':'français')+(a.bloc?' · bloc '+esc(a.bloc):'')+(a.etage?' · étage '+esc(a.etage):'')+'</p>'+
       (a.notes?'<p class="muted">Notes : '+esc(a.notes)+'</p>':'')+'</div>';
+    if(has('tresorier','president')) h += '<details class="card" id="plus_'+esc(a.id)+'" ontoggle="if(this.open) chargerPlus(\''+esc(a.id)+'\')"><summary class="btn sec" style="margin-top:0">Échéancier, contentieux, attestation…</summary><div id="plus_out">Patientez…</div></details>';
     view('Appartement '+a.id, h);
   }));
 };
@@ -1262,12 +1271,15 @@ function renderTresorerie(){
     return view('Trésorerie', '<div class="space-list">'+
       rowlink('signalements','','Paiements signalés'+(S.me.signalements?' ('+S.me.signalements+')':''),'Envoyés par les copropriétaires, à vérifier')+
       rowlink('paiement','','Enregistrer un paiement','Virement, dépôt, chèque ou espèces – reçu automatique')+
-      rowlink('caisse','','Espèces en caisse','Argent liquide reçu, à déposer à la banque')+'</div>');
+      rowlink('caisse','','Espèces en caisse','Argent liquide reçu, à déposer à la banque')+
+      rowlink('avalider','','Dépenses à valider'+(S.me.avalider?' ('+S.me.avalider+')':''),'Contrôle : les grosses dépenses sont validées par une 2e personne')+
+      rowlink('appels','','Appels de fonds (travaux)','Part de chacun, fonds réunis')+'</div>');
   }
   view('Trésorerie', '<div class="space-list">'+
     rowlink('signalements','📥','Paiements signalés'+(S.me.signalements?' ('+S.me.signalements+')':''),'Envoyés par les copropriétaires, à vérifier')+
     rowlink('paiement','💰','Enregistrer un paiement','Virement, dépôt, chèque ou espèces – reçu automatique')+
     rowlink('caisse','','Espèces en caisse'+((S.dash&&S.dash.kpi&&S.dash.kpi.caisse)?' ('+dh(S.dash.kpi.caisse)+')':''),'Argent liquide reçu, à déposer à la banque')+
+    rowlink('appels','','Appels de fonds (travaux)','Ascenseur, électricité… : part de chacun, fonds réunis')+
     rowlink('depense','🧾','Enregistrer une dépense','Avec facture, décharge ou avis de virement')+
     rowlink('justifs','📎','Justificatifs manquants','Ajouter la photo d\'une facture')+
     rowlink('compta','📘','Comptabilité','Budget, rapprochement, états annuels, clôture')+
@@ -1388,6 +1400,7 @@ ROUTES.comptaVue = function(){
     (has('tresorier')?rowlink('rappro','','Rapprochement bancaire','Chaque mois : solde de l’outil = relevé de la banque'):'')+
     (has('tresorier')?rowlink('factures','','Factures à payer',''):'')+
     rowlink('cloture','','Clôture de l’exercice','Livres et états figés en PDF')+
+    rowlink('rapportAG','','Rapport annuel pour l’AG','Comptes, budget, impayés, travaux, quitus – en PDF')+
     '</div><p class="muted">Les écritures en partie double, le grand livre et la balance sont recalculés chaque jour (Admin → Voir les données).</p>');
 };
 function yearSelect(id, ys, sel){ return '<select id="'+id+'" style="width:auto">'+ys.map(function(y){ return '<option'+(y===sel?' selected':'')+'>'+y+'</option>'; }).join('')+'</select>'; }
@@ -1670,6 +1683,7 @@ function renderSecretariat(){
   view('Secrétariat', '<div class="space-list">'+
     rowlink('demandes','✉️','Demandes des copropriétaires'+(S.me.demandes?' ('+S.me.demandes+')':''),'Questions, problèmes signalés, documents')+
     rowlink('reunions','📅','Réunions et AG','Convocation, présences, décisions, PV')+
+    rowlink('entretien','','Carnet d’entretien','Ascenseurs, électricité, extincteurs : contrôles et rappels')+
     rowlink('decisions','📜','Registre des décisions','Suivi de ce qui a été voté')+
     rowlink('projets','🏗️','Projets et travaux prévus','Devis, vote en AG, réalisation')+
     rowlink('incidents','🛠️','Incidents et travaux','Pannes, réparations, photos')+
@@ -1740,6 +1754,147 @@ ROUTES.caisse = function(){
       }).then(function(r){ go('caisse'); setTimeout(function(){ showErr('✓ Dépôt '+r.numero+' enregistré. Reste en caisse : '+dh(r.reste)+'.'); }, 400); }));
     };
   }));
+};
+</script>
+
+<script>
+// =================== Règles de l'art : écrans ===================
+function jauge(pct){ return '<div style="background:#e6dfd2;border-radius:3px;height:14px;margin:6px 0"><div style="width:'+Math.max(0,Math.min(100,pct))+'%;height:14px;background:var(--ok);border-radius:3px"></div></div>'; }
+
+// ---------- 1. Appels de fonds ----------
+ROUTES.appels = function(){
+  guard(api('appels.liste').then(function(L){
+    var h = L.map(function(x){
+      var nonPayes = x.lignes.filter(function(l){ return l.reste > 0; });
+      return '<div class="card"><div class="h2">'+esc(x.titre)+(x.statut==='clos'?' <span class="muted">(clos)</span>':'')+'</div>'+
+        (x.description?'<p>'+esc(x.description)+'</p>':'')+
+        '<p><b>'+dh(x.reunis)+'</b> réunis sur '+dh(x.total)+' ('+x.pct+' %)</p>'+jauge(x.pct)+
+        '<p class="muted">Répartition '+esc(x.repartition)+(x.decision?' · décision : '+esc(x.decision):'')+(x.echeance?' · à payer avant le '+esc(x.echeance):'')+'</p>'+
+        '<details><summary class="btn small sec">Qui a payé ? ('+(x.lignes.length-nonPayes.length)+' / '+x.lignes.length+')</summary><div class="list">'+x.lignes.map(function(l){
+          return '<div class="item"><b>'+esc(l.id)+'</b> '+esc(l.nom)+' · part '+dh(l.part)+' · <span class="'+(l.reste>0?'st-retard':'st-a_jour')+'">'+(l.reste>0?'reste '+dh(l.reste):'✓ payé')+'</span></div>';
+        }).join('')+'</div></details>'+
+        (has('tresorier','president')?'<button class="btn small sec" onclick="guard(api(\'appel.cloturer\',{id:\''+esc(x.id)+'\'}).then(function(){go(\'appels\');}))">'+(x.statut==='clos'?'Rouvrir':'Clore cet appel')+'</button>':'')+'</div>';
+    }).join('');
+    if(has('tresorier','president')) h = '<details class="card"><summary class="btn pri" style="margin-top:0">Nouvel appel de fonds</summary>'+
+      '<label>Titre</label><input id="af_t" placeholder="ex. Remise en service du 2e ascenseur">'+
+      '<label>Explication pour les résidents (facultatif)</label><textarea id="af_d" style="min-height:70px"></textarea>'+
+      '<label>Montant total (DH)</label><input id="af_m" type="number" inputmode="decimal">'+
+      '<label>Répartition</label><select id="af_r"><option value="égale">Part égale pour chaque appartement</option><option value="quote-part">Selon la quote-part (tantièmes)</option></select>'+
+      '<label>Décision de l’AG (référence du PV)</label><input id="af_dec" placeholder="ex. AG du 15/01/2027, résolution 3">'+
+      '<label>À payer avant le (facultatif)</label><input id="af_e" type="date">'+
+      '<button class="btn pri" id="af_ok">Créer l’appel de fonds</button></details>'+h;
+    if(!L.length) h += '<div class="card muted">Aucun appel de fonds pour l’instant.</div>';
+    view('Appels de fonds', h);
+    if($('af_ok')) $('af_ok').onclick = function(){
+      guard(api('appel.creer',{titre:$('af_t').value, description:$('af_d').value, montant:$('af_m').value, repartition:$('af_r').value, decision:$('af_dec').value, echeance:$('af_e').value}).then(function(){ go('appels'); }));
+    };
+  }));
+};
+
+// ---------- 2, 3, 4. Fiche appartement : échéancier, contentieux, attestation ----------
+function chargerPlus(id){
+  guard(api('gestion.appart',{id:id}).then(function(g){
+    var h = '';
+    if(g.appels.length) h += '<div class="h2">Appels de fonds</div>'+g.appels.map(function(x){ return '<p>'+esc(x.titre)+' : part '+dh(x.part)+' · <span class="'+(x.reste>0?'st-retard':'st-a_jour')+'">'+(x.reste>0?'reste '+dh(x.reste):'✓ payé')+'</span></p>'; }).join('');
+    // échéancier
+    h += '<div class="h2">Échéancier</div>';
+    if(g.echeancier){
+      var e = g.echeancier;
+      h += '<p><b>'+dh(e.mensualite)+' / mois</b> en plus de la cotisation, depuis le '+esc(e.debut)+' (fin prévue '+esc(e.finPrevue)+')<br>'+
+        'Reste dû : <b>'+dh(e.resteReel)+'</b> · attendu à ce jour : '+dh(e.resteAttendu)+'<br>'+
+        (e.termine?'<span class="st-a_jour">✓ Dette soldée</span>':e.respecte?'<span class="st-a_jour">✓ Respecté</span>':'<span class="st-retard">✗ Pas respecté</span>')+'</p>'+
+        '<button class="btn small sec" onclick="guard(api(\'echeancier.arreter\',{id:\''+esc(id)+'\', statut:\''+(e.termine?'terminé':'abandonné')+'\'}).then(function(){chargerPlus(\''+esc(id)+'\');}))">'+(e.termine?'Marquer terminé':'Arrêter l’échéancier')+'</button>';
+    } else {
+      h += '<details><summary class="btn small sec">Mettre en place un échéancier</summary>'+
+        '<label>Montant par mois, en plus de la cotisation (DH)</label><input id="ech_m" type="number" inputmode="decimal">'+
+        '<label>À partir du</label><input id="ech_d" type="date" value="'+today()+'">'+
+        '<label>Accord signé (photo, facultatif)</label><input id="ech_f" type="file" accept="image/*,application/pdf">'+
+        '<button class="btn pri" id="ech_ok">Enregistrer l’échéancier</button></details>';
+    }
+    // contentieux
+    h += '<div class="h2" style="margin-top:14px">Recouvrement / contentieux</div>';
+    if(g.contentieux.length) h += '<div class="list">'+g.contentieux.map(function(c){
+      return '<div class="item"><b>'+esc(c.date)+'</b> · '+esc(c.etape)+(c.montant?' · '+dh(c.montant):'')+(c.avocat?'<br><span class="muted">Avocat : '+esc(c.avocat)+'</span>':'')+
+        (c.prochaine?'<br>Prochaine échéance : <b>'+esc(c.prochaine)+'</b>':'')+(c.notes?'<br><span class="muted">'+esc(c.notes)+'</span>':'')+(c.document?' · '+linkTo(c.document,'document'):'')+'</div>';
+    }).join('')+'</div>';
+    h += '<details><summary class="btn small sec">'+(g.contentieux.length?'Ajouter une étape':'Ouvrir un dossier')+'</summary>'+
+      '<label>Étape</label><select id="ctx_e">'+g.etapes.map(function(x){ return '<option>'+esc(x)+'</option>'; }).join('')+'</select>'+
+      '<label>Date</label><input id="ctx_d" type="date" value="'+today()+'">'+
+      '<label>Avocat / huissier (facultatif)</label><input id="ctx_a">'+
+      '<label>Prochaine échéance (rappel)</label><input id="ctx_p" type="date">'+
+      '<label>Document (facultatif)</label><input id="ctx_f" type="file" accept="image/*,application/pdf">'+
+      '<label>Notes</label><input id="ctx_n">'+
+      '<button class="btn pri" id="ctx_ok">Enregistrer l’étape</button></details>';
+    // attestation
+    h += '<div class="h2" style="margin-top:14px">Attestation de situation</div><p class="muted">Pour une vente (notaire) : ce qui reste dû, ou « à jour ».</p>'+
+      '<button class="btn sec" id="att_ok">Générer l’attestation (PDF)</button><div id="att_out"></div>'+
+      (g.quotePart?'<p class="muted">Quote-part : '+esc(g.quotePart)+'</p>':'');
+    $('plus_out').innerHTML = h;
+    if($('ech_ok')) $('ech_ok').onclick = function(){
+      guard(readFile($('ech_f')).then(function(f){ return api('echeancier.enregistrer',{id:id, mensualite:$('ech_m').value, debut:$('ech_d').value, document:f}); }).then(function(){ chargerPlus(id); }));
+    };
+    $('ctx_ok').onclick = function(){
+      guard(readFile($('ctx_f')).then(function(f){ return api('contentieux.ajouter',{id:id, etape:$('ctx_e').value, date:$('ctx_d').value, avocat:$('ctx_a').value, prochaine:$('ctx_p').value, notes:$('ctx_n').value, document:f}); }).then(function(){ chargerPlus(id); }));
+    };
+    $('att_ok').onclick = function(){
+      guard(api('attestation.situation',{id:id}).then(function(r){ $('att_out').innerHTML = '<p>Reste dû : <b>'+dh(r.total)+'</b></p><a class="btn sec" target="_blank" href="'+esc(r.url)+'">Ouvrir l’attestation</a>'; }));
+    };
+  }));
+}
+
+// ---------- 5. Dépenses à valider ----------
+ROUTES.avalider = function(){
+  guard(api('depenses.avalider').then(function(L){
+    view('Dépenses à valider', '<p class="muted">Contrôle interne : une dépense importante saisie par le trésorier est vérifiée par une 2e personne.</p>'+
+      (L.length?L.map(function(d){
+        return '<div class="card"><b>'+esc(d.date)+' · '+dh(d.montant)+'</b><br>'+esc(d.categorie)+' – '+esc(d.beneficiaire)+(d.description?'<br><span class="muted">'+esc(d.description)+'</span>':'')+
+          '<br><span class="muted">'+esc(d.mode)+' · saisie par '+esc(d.par)+'</span>'+(d.justificatif?' · '+linkTo(d.justificatif,'justificatif'):' · <span class="st-retard">sans justificatif</span>')+
+          (has('president')||has('admin')?'<button class="btn pri" onclick="guard(api(\'depense.valider\',{numero:\''+esc(d.numero)+'\'}).then(function(){go(\'avalider\');}))">Valider</button>':'')+'</div>';
+      }).join(''):'<div class="card">✓ Rien à valider.</div>'));
+  }));
+};
+
+// ---------- 6. Carnet d'entretien ----------
+var EQ = [];
+ROUTES.entretien = function(){
+  guard(api('equipements.liste').then(function(L){
+    EQ = L;
+    var peut = has('secretaire','president');
+    var h = (peut?'<button class="btn pri" onclick="eqForm()">Ajouter un équipement</button><div id="eq_new"></div>':'')+
+      (L.length?'<div class="card list">'+L.map(function(e){
+        return '<div class="item"><b>'+esc(e.nom)+'</b>'+(e.prestataire?' <span class="muted">('+esc(e.prestataire)+')</span>':'')+'<br>'+
+          'Dernier contrôle : '+(esc(e.dernier)||'—')+' · tous les '+(e.periodicite||'?')+' mois<br>'+
+          'Prochain : <b class="'+(e.enRetard?'st-retard':e.bientot?'':'')+'">'+(esc(e.prochain)||'—')+'</b>'+(e.enRetard?' <span class="st-retard">en retard</span>':e.bientot?' <span class="muted">bientôt</span>':'')+
+          (e.document?' · '+linkTo(e.document,'dernier document'):'')+
+          (peut?'<div class="row"><button class="btn small pri" onclick="eqControle(\''+esc(e.id)+'\')">Contrôle fait</button><button class="btn small sec" onclick="eqForm(\''+esc(e.id)+'\')">Modifier</button></div><div id="eq_'+esc(e.id)+'"></div>':'')+'</div>';
+      }).join('')+'</div>':'<div class="card muted">Aucun équipement. Exemples : ascenseur 1 et 2 (contrôle annuel), installation électrique, extincteurs (annuel), pompe / surpresseur.</div>');
+    view('Carnet d’entretien', h);
+  }));
+};
+function eqForm(id){
+  var e = EQ.filter(function(x){ return x.id===id; })[0] || {};
+  var box = $(id?'eq_'+id:'eq_new'); if(box.innerHTML){ box.innerHTML=''; return; }
+  box.innerHTML = '<div class="card"><label>Équipement</label><input id="eq_n" value="'+esc(e.nom||'')+'" placeholder="ex. Ascenseur 2">'+
+    '<label>Prestataire</label><input id="eq_p" value="'+esc(e.prestataire||'')+'">'+
+    '<label>Dernier contrôle</label><input id="eq_d" type="date" value="'+esc(e.dernierIso||'')+'">'+
+    '<label>Contrôle tous les (mois)</label><input id="eq_m" type="number" value="'+esc(e.periodicite||12)+'">'+
+    '<button class="btn pri" id="eq_ok">Enregistrer</button></div>';
+  $('eq_ok').onclick = function(){ guard(api('equipement.enregistrer',{id:id||'', nom:$('eq_n').value, prestataire:$('eq_p').value, dernier:$('eq_d').value, periodicite:$('eq_m').value}).then(function(){ go('entretien'); })); };
+}
+function eqControle(id){
+  var box = $('eq_'+id); if(box.innerHTML){ box.innerHTML=''; return; }
+  box.innerHTML = '<label>Date du contrôle</label><input id="ec_d" type="date" value="'+today()+'"><label>Rapport ou facture (facultatif)</label><input id="ec_f" type="file" accept="image/*,application/pdf">'+
+    '<label>Remarque</label><input id="ec_n"><button class="btn pri" id="ec_ok">Noter le contrôle</button>';
+  $('ec_ok').onclick = function(){ guard(readFile($('ec_f')).then(function(f){ return api('equipement.controle',{id:id, date:$('ec_d').value, notes:$('ec_n').value, document:f}); }).then(function(){ go('entretien'); })); };
+}
+
+// ---------- 9. Rapport annuel pour l'AG ----------
+ROUTES.rapportAG = function(){
+  var y = new Date().getFullYear();
+  view('Rapport annuel pour l’AG', '<div class="card"><p>Un document PDF pour l’assemblée générale : comptes, budget prévu et réalisé, impayés, appels de fonds, travaux, décisions, et les résolutions à voter (approbation des comptes, <b>quitus au syndic</b>, budget suivant).</p>'+
+    '<label>Exercice</label><select id="rag_y"><option>'+y+'</option><option>'+(y-1)+'</option></select>'+
+    '<button class="btn pri" id="rag_ok">Préparer le rapport</button><div id="rag_out"></div></div>');
+  $('rag_ok').onclick = function(){ guard(api('rapport.ag',{exercice:$('rag_y').value}).then(function(r){ $('rag_out').innerHTML = '<a class="btn sec" target="_blank" href="'+esc(r.url)+'">Ouvrir le rapport (PDF)</a>'; })); };
 };
 </script>
 
@@ -1844,6 +1999,7 @@ function residentRender(){
     '<div class="st-'+a.statut+'" style="font-size:24px;margin-top:8px">'+(a.statut==='retard'?'✗ ':'✓ ')+st+'</div>'+
     '<p style="font-size:20px;margin:10px 0 0">'+(a.du>0 ? 'Il reste <b>'+dh(a.du)+'</b> à payer'+(function(){ var r=a.mois.filter(function(m){return m.code==='R';}).map(function(m){return m.label;}); return r.length?' ('+esc(r.join(', '))+')':''; })()+'.' : 'Tout est payé'+(a.avance>0?' jusqu\'à '+esc(a.payeJusqua):'')+'. Merci !')+'</p>'+
     '<p style="margin:6px 0 0">Payé jusqu\'à : <b>'+esc(a.payeJusqua)+'</b></p>'+
+    (d.echeancier?'<p style="margin:6px 0 0">Votre échéancier : <b>'+dh(d.echeancier.mensualite)+' / mois</b> en plus de la cotisation · reste '+dh(d.echeancier.reste)+'</p>':'')+
     '<p class="muted" style="margin-bottom:0">Cotisation : '+dh(d.mensuel)+' par mois.</p></div>';
 
   // Actions
@@ -1851,6 +2007,13 @@ function residentRender(){
     '<button class="btn sec" onclick="rForm(\'demande\')">✉️ Envoyer une demande</button>'+
     (d.contact && d.contact.whatsapp ? '<a class="btn wa" target="_blank" href="'+esc(d.contact.whatsapp)+'">Écrire au trésorier sur WhatsApp</a>' : '')+'<div id="rform"></div>';
 
+  // Travaux financés par un appel de fonds : jauge commune et part de l'appartement (rien s'il n'y en a pas)
+  (d.travaux||[]).forEach(function(t){
+    h += '<div class="card"><div class="h2">Travaux : '+esc(t.titre)+'</div>'+(t.description?'<p>'+esc(t.description)+'</p>':'')+
+      '<p><b>'+t.pct+' %</b> des fonds réunis ('+dh(t.reunis)+' sur '+dh(t.total)+')</p>'+
+      '<div style="background:#e6dfd2;border-radius:3px;height:14px"><div style="width:'+t.pct+'%;height:14px;background:var(--ok);border-radius:3px"></div></div>'+
+      '<p style="margin-top:8px">Votre part : <b>'+dh(t.part)+'</b> · '+(t.reste>0?'<span class="st-retard">reste '+dh(t.reste)+'</span>':'<span class="st-a_jour">✓ payée, merci</span>')+(t.echeance&&t.reste>0?' · avant le '+esc(t.echeance):'')+'</p></div>';
+  });
   // Suivi : paiements signalés et demandes, avec accusé de lecture et réponse
   function sigItem(s){
     var cls = s.statut==='refusé'?'st-retard':s.statut==='validé'?'st-a_jour':'';
