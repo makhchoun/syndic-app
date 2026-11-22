@@ -129,6 +129,7 @@ var SERVEUR = "https://script.google.com/macros/s/AKfycbyi__RKASnF8TeDW7ObxW1B_U
   .rowlink .arrow { color:var(--pri); }
   .muted { color:var(--muted); }
   /* lisibilité (lecteurs âgés) */
+  .manque { outline:3px solid var(--bad) !important; outline-offset:2px; }
   .card.warn-box { border:2px solid var(--warn); padding:12px 14px; background:rgba(138,90,18,.06); }
   /* onglets : tous visibles, sur deux lignes si besoin (pas de défilement caché) */
   nav { flex-wrap:wrap; overflow-x:visible; } nav button { flex:1 1 auto; padding:10px 12px; }
@@ -197,7 +198,21 @@ function stripEmoji(root){
 }
 new MutationObserver(function(ms){ ms.forEach(function(m){ Array.prototype.forEach.call(m.addedNodes, stripEmoji); }); }).observe(document.documentElement, {childList:true, subtree:true});
 function view(title, html){ $('title').textContent = title; $('app').innerHTML = html; $('homeBtn').style.display = S.session?'inline-block':'none'; renderNav(); if(!S.silent) window.scrollTo(0,0); }
-function showErr(msg){ var e=document.querySelector('.err'); if(e) e.remove(); var d=document.createElement('div'); d.className='err'; d.textContent=msg; $('app').appendChild(d); d.scrollIntoView({behavior:'smooth'}); }
+/** Message d'erreur affiché juste sous le bouton qu'on vient de toucher (pas en bas de la page). */
+var DERNIER_BOUTON = null;
+document.addEventListener('click', function(e){ var b = e.target && e.target.closest && e.target.closest('button'); if(b) DERNIER_BOUTON = b; }, true);
+function showErr(msg){
+  var e=document.querySelector('.err'); if(e) e.remove();
+  var d=document.createElement('div'); d.className='err'; d.textContent=msg;
+  var b = DERNIER_BOUTON && document.body.contains(DERNIER_BOUTON) && $('app').contains(DERNIER_BOUTON) ? DERNIER_BOUTON : null;
+  if(b) b.insertAdjacentElement('afterend', d); else $('app').appendChild(d);
+  // photo manquante : on entoure le champ photo le plus proche
+  if(/photo|preuve|reçu|bordereau|justificatif/i.test(msg) && b){
+    var box = b.closest('.card, #rform, #app'), f = box && box.querySelector('input[type=file]');
+    if(f){ var w = f.closest('.file') || f; w.classList.add('manque'); f.addEventListener('change', function(){ w.classList.remove('manque'); }, { once:true }); }
+  }
+  d.scrollIntoView({behavior:'smooth', block:'center'});
+}
 function has(){ var roles=(S.me&&S.me.roles)||[]; for(var i=0;i<arguments.length;i++){ if(roles.indexOf(arguments[i])>=0) return true; } return roles.indexOf('admin')>=0; }
 function saveStore(){ try{ localStorage.setItem(STORE, JSON.stringify({k:S.k, session:S.session})); }catch(e){} }
 function loadStore(){ try{ return JSON.parse(localStorage.getItem(STORE)||'null'); }catch(e){ return null; } }
@@ -2176,7 +2191,7 @@ function rForm(kind){
     $('rs_go').onclick = function(){
       if(!(Number($('rs_m').value)>0)) return showErr('Indiquez le montant.');
       readFile($('rs_f')).then(function(f){
-        if(!f) throw new Error('Ajoutez la photo de la preuve.');
+        if(!f) throw new Error($('rs_mode').value==='especes' ? 'Ajoutez la photo du reçu remis par le syndic (bouton ci-dessus).' : 'Ajoutez la photo de la preuve de paiement (bouton ci-dessus).');
         busy(true);
         return rCall('residentSignalerPaiement', 'monappart.signaler', { montant:$('rs_m').value, date:$('rs_d').value, mode:$('rs_mode').value, reference:$('rs_ref').value, commentaire:$('rs_c').value, preuve:f });
       }).then(function(x){
