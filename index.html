@@ -172,7 +172,7 @@ function dh(x){ var n=Math.round((Number(x)||0)*100)/100; return n.toFixed(n%1?2
 function today(){ var d=new Date(); return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2); }
 function busy(on){ $('busy').style.display = on?'flex':'none'; }
 var CURRENT_SPACE = 'dashboard';
-var ROUTE_SPACE = { dashboard:'dashboard', appart:'dashboard', mouvements:'dashboard', afaire:'dashboard', tableau:'dashboard', appartements:'dashboard',
+var ROUTE_SPACE = { dashboard:'dashboard', comptaVue:'tresorerie', caisse:'tresorerie', appart:'dashboard', mouvements:'dashboard', afaire:'dashboard', tableau:'dashboard', appartements:'dashboard',
   tresorerie:'tresorerie', compta:'tresorerie', etats:'tresorerie', budget:'tresorerie', rappro:'tresorerie', cloture:'tresorerie', factures:'tresorerie', liensCopro:'tresorerie', signalements:'tresorerie', demandes:'secretariat', paiement:'tresorerie', depense:'tresorerie', justifs:'tresorerie', relances:'tresorerie', decharge:'tresorerie',
   secretariat:'secretariat', reunions:'secretariat', reunionNew:'secretariat', reunion:'secretariat', presences:'secretariat', decisions:'secretariat', incidents:'secretariat', contrats:'secretariat',
   projets:'secretariat', admin:'admin', acces:'admin', donnees:'admin', demarrage:'admin', monappart:'monappart' };
@@ -217,7 +217,7 @@ function call(fn){
 // ---------- Rapidité : cache des lectures dans le navigateur ----------
 // Un écran déjà vu s'affiche tout de suite, puis se met à jour en arrière-plan.
 // Toute écriture (paiement, dépense…) vide ce cache : jamais de donnée périmée après une action.
-var READS = { 'moi':1, 'dashboard.global':1, 'appartement.detail':1, 'appartements.liste':1, 'tableau':1, 'mouvements.liste':1, 'relances.liste':1,
+var READS = { 'moi':1, 'caisse.etat':1, 'dashboard.global':1, 'appartement.detail':1, 'appartements.liste':1, 'tableau':1, 'mouvements.liste':1, 'relances.liste':1,
   'reunions.liste':1, 'decisions.liste':1, 'incidents.liste':1, 'contrats.liste':1, 'projets.liste':1, 'depense.liste':1, 'paiement.liste':1,
   'messages.liste':1, 'categories.liste':1, 'signalements.liste':1, 'demandes.liste':1, 'etats.exercices':1, 'etats.get':1, 'budget.get':1,
   'rappro.liste':1, 'clotures.liste':1, 'admin.donnees':1, 'residents.liste':1, 'acces.liste':1, 'fichiers.liste':1 };
@@ -329,6 +329,8 @@ function aptCard(a){
   return '<div class="card"><b>'+esc(a.id)+' – '+esc(a.nom)+'</b><br><span class="st-'+a.statut+'">'+esc(a.statutLabel)+'</span>'+
     (a.du>0?' · reste dû <b>'+dh(a.du)+'</b> ('+a.retard+' mois)':'')+'<br><span class="muted">Payé jusqu\'à : '+esc(a.payeJusqua)+(a.derniereRelance?' · dernière relance le '+esc(a.derniereRelance.date)+' (niv. '+a.derniereRelance.niveau+')':'')+'</span></div>';
 }
+/** Formulaire de paiement : aide quand le mode est « Espèces ». */
+function modePaiement(){ var e = $('mode') && $('mode').value === 'especes'; if($('modeAide')) $('modeAide').hidden = !e; }
 function findApt(id){ return (S.apts||[]).filter(function(a){return a.id===id;})[0]; }
 
 // ---------- connexion ----------
@@ -464,7 +466,8 @@ ROUTES.paiement = function(pre){
       '<label>Montant (DH)</label><input id="montant" type="number" inputmode="decimal" min="1" step="0.01">'+
       '<div class="row" id="quick"></div>'+
       '<label>Date du paiement</label><input id="date" type="date" value="'+today()+'">'+
-      '<label>Mode</label><select id="mode"><option value="virement">Virement</option><option value="depot">Dépôt à la banque</option></select>'+
+      '<label>Mode</label><select id="mode" onchange="modePaiement()"><option value="virement">Virement</option><option value="depot">Dépôt à la banque</option><option value="cheque">Chèque</option><option value="especes">Espèces (reçu papier)</option></select>'+
+      '<p class="muted" id="modeAide" hidden>Espèces : joignez ci-dessous la <b>photo du reçu papier signé</b>. Le copropriétaire recevra aussi le reçu de la plateforme. L’argent est noté « en caisse » jusqu’à son dépôt à la banque.</p>'+
       '<label>Référence bancaire (facultatif)</label><input id="ref" type="text">'+
       fileField('preuve','Preuve (avis de virement, bordereau de dépôt)','Photo ou PDF. Facultatif, mais recommandé.')+
       '<label><input type="checkbox" id="papier" style="width:auto"> Reçu papier déjà remis (carnet)</label>'+
@@ -509,7 +512,7 @@ function depenseForm(cl){
     '<label>Montant (DH)</label><input id="montant" type="number" inputmode="decimal" min="1" step="0.01">'+
     '<label>Date</label><input id="date" type="date" value="'+today()+'">'+
     '<label>Déjà payée ?</label><select id="paye"><option value="oui">Oui, payée</option><option value="non">Non, facture à payer plus tard</option></select>'+
-    '<div id="payBox"><label>Mode</label><select id="mode"><option value="virement">Virement</option><option value="cheque">Chèque</option></select>'+
+    '<div id="payBox"><label>Mode</label><select id="mode"><option value="virement">Virement</option><option value="cheque">Chèque</option><option value="especes">Espèces</option><option value="autre">Autre</option></select>'+
     '<label>N° de chèque / référence (facultatif)</label><input id="ref" type="text"></div>'+
     fileField('justif','Justificatif','Photo ou PDF. Vous pourrez l\'ajouter plus tard.')+
     '<button class="btn pri" id="save">Enregistrer la dépense</button></div>');
@@ -1088,6 +1091,7 @@ function accueil(d){
   function ligne(txt, route, bouton){ lignes.push('<li>'+txt+(route?' <button class="btn small pri" onclick="go(\''+route+'\')">'+bouton+'</button>':'')+'</li>'); }
   if(r.indexOf('tresorier')>=0 || r.indexOf('admin')>=0){
     if(S.me.signalements) ligne('<b>'+S.me.signalements+'</b> paiement'+(S.me.signalements>1?'s':'')+' signalé'+(S.me.signalements>1?'s':'')+' par les résidents, à vérifier.', 'signalements', 'Vérifier');
+    if(k.caisse > 0) ligne('<b>'+dh(k.caisse)+'</b> en espèces, à déposer à la banque.', 'caisse', 'Déposer');
     if(k.enRetard) ligne('<b>'+k.enRetard+'</b> appartement'+(k.enRetard>1?'s':'')+' en retard de paiement.', 'relances', 'Relancer');
   }
   if(r.indexOf('secretaire')>=0 || r.indexOf('admin')>=0){
@@ -1106,7 +1110,7 @@ function renderDashboard(d, filtre){
   var k = d.kpi;
   var h = accueil(d)+
     '<div class="kpis" style="margin-bottom:14px">'+
-      '<div class="kpi">Solde du compte<b>'+dh(k.solde)+'</b></div>'+
+      '<div class="kpi">Trésorerie (total)<b>'+dh(k.solde)+'</b><span class="muted">Banque '+dh(k.solde-(k.caisse||0))+' · Espèces '+dh(k.caisse||0)+'</span></div>'+
       '<div class="kpi click" onclick="renderDashboard(S.dash,\'retard\');setTimeout(function(){$(\'grille\').scrollIntoView({behavior:\'smooth\'});},50)">À jour<b>'+k.ajour+' / '+k.total+'</b><span class="muted">'+k.enRetard+' en retard ›</span></div>'+
       '<div class="kpi">Reste à encaisser<b class="'+(k.totalDu>0?'st-retard':'')+'">'+dh(k.totalDu)+'</b></div>'+
       '<div class="kpi click" onclick="go(\'afaire\')">À faire<b>'+d.taches+'</b><span class="muted">voir la liste ›</span></div>'+
@@ -1243,7 +1247,8 @@ ROUTES.secretariat = function(){ refreshMe(renderSecretariat); };
 function renderTresorerie(){
   view('Trésorerie', '<div class="space-list">'+
     rowlink('signalements','📥','Paiements signalés'+(S.me.signalements?' ('+S.me.signalements+')':''),'Envoyés par les copropriétaires, à vérifier')+
-    rowlink('paiement','💰','Enregistrer un paiement','Virement ou dépôt – reçu automatique')+
+    rowlink('paiement','💰','Enregistrer un paiement','Virement, dépôt, chèque ou espèces – reçu automatique')+
+    rowlink('caisse','','Espèces en caisse'+((S.dash&&S.dash.kpi&&S.dash.kpi.caisse)?' ('+dh(S.dash.kpi.caisse)+')':''),'Argent liquide reçu, à déposer à la banque')+
     rowlink('depense','🧾','Enregistrer une dépense','Avec facture, décharge ou avis de virement')+
     rowlink('justifs','📎','Justificatifs manquants','Ajouter la photo d\'une facture')+
     rowlink('compta','📘','Comptabilité','Budget, rapprochement, états annuels, clôture')+
@@ -1346,8 +1351,19 @@ function verifImport(){
 }
 
 // ---------- Comptabilité (décret 2.23.700) ----------
+/** Trésorerie : total = banque + espèces en caisse. */
+function tresorerieCard(k){
+  var c = k.caisse||0;
+  return '<div class="card"><div class="h2">Trésorerie</div><div class="kpis">'+
+    '<div class="kpi">Banque<b>'+dh(k.solde-c)+'</b><span class="muted">compte 5121</span></div>'+
+    '<div class="kpi">Espèces<b>'+dh(c)+'</b><span class="muted">caisse 5161, à déposer</span></div>'+
+    '<div class="kpi">Total<b>'+dh(k.solde)+'</b></div></div></div>';
+}
 ROUTES.compta = function(){
-  view('Comptabilité', '<div class="space-list">'+
+  guard(api('dashboard.global').then(function(d){ S.dash = d; ROUTES.comptaVue(); }));
+};
+ROUTES.comptaVue = function(){
+  view('Comptabilité', tresorerieCard(S.dash.kpi)+'<div class="space-list">'+
     rowlink('etats','','États annuels','Annexes 10, 11 et 12 du décret – à présenter à l’AG')+
     rowlink('budget','','Budget','Prévu, réalisé, exercice précédent')+
     (has('tresorier')?rowlink('rappro','','Rapprochement bancaire','Chaque mois : solde de l’outil = relevé de la banque'):'')+
@@ -1484,7 +1500,7 @@ ROUTES.factures = function(){
         (f.description?'<br><span class="muted">'+esc(f.description)+'</span>':'')+
         '<details><summary class="btn small pri" style="display:inline-block">Marquer comme payée</summary>'+
         '<label>Date du paiement</label><input id="fp_d_'+esc(f.numero)+'" type="date" value="'+today()+'">'+
-        '<label>Mode</label><select id="fp_m_'+esc(f.numero)+'"><option value="virement">Virement</option><option value="cheque">Chèque</option></select>'+
+        '<label>Mode</label><select id="fp_m_'+esc(f.numero)+'"><option value="virement">Virement</option><option value="cheque">Chèque</option><option value="especes">Espèces</option><option value="autre">Autre</option></select>'+
         '<label>N° de chèque / référence</label><input id="fp_r_'+esc(f.numero)+'" type="text">'+
         '<button class="btn pri" onclick="payerFacture(\''+esc(f.numero)+'\')">Enregistrer le paiement</button></details></div>';
     }).join(''):'<div class="card">✔ Aucune facture à payer.</div>'));
@@ -1679,6 +1695,36 @@ ROUTES.journal = function(qui){
 </script>
 
 <script>
+// ---------- Trésorerie : espèces en caisse, dépôt à la banque ----------
+ROUTES.caisse = function(){
+  guard(api('caisse.etat').then(function(c){
+    var h = '<div class="card kpis"><div class="kpi">En caisse<b class="'+(c.solde>0?'st-retard':'st-a_jour')+'">'+dh(c.solde)+'</b><span class="muted">à déposer à la banque</span></div>'+
+      '<div class="kpi">Reçu en espèces<b>'+dh(c.recu)+'</b><span class="muted">déjà déposé '+dh(c.depose)+(c.paye?' · payé en espèces '+dh(c.paye):'')+'</span></div></div>';
+    if(has('tresorier') && c.solde > 0){
+      h += '<div class="card"><div class="h2">Déposer les espèces à la banque</div>'+
+        '<label>Montant déposé (DH)</label><input id="cv_m" type="number" inputmode="decimal" value="'+c.solde+'">'+
+        '<label>Date du dépôt</label><input id="cv_d" type="date" value="'+today()+'">'+
+        '<label>Photo du bordereau de la banque (obligatoire)</label><input id="cv_f" type="file" accept="image/*,application/pdf">'+
+        '<label>Commentaire (facultatif)</label><input id="cv_c" type="text">'+
+        '<button class="btn pri" id="cv_ok">Enregistrer le dépôt</button></div>';
+    }
+    h += '<div class="card"><div class="h2">Derniers paiements en espèces</div>'+(c.especes.length?'<div class="list">'+c.especes.map(function(p){
+      return '<div class="item"><b>'+esc(p.date)+'</b> · '+esc(p.appartement)+' · <b>'+dh(p.montant)+'</b><br><span class="muted">reçu '+esc(p.numero)+' · saisi par '+esc(p.par||'')+'</span></div>';
+    }).join('')+'</div>':'<p class="muted">Aucun paiement en espèces.</p>')+'</div>';
+    if(c.versements.length) h += '<div class="card"><div class="h2">Dépôts à la banque</div><div class="list">'+c.versements.map(function(v){
+      return '<div class="item"><b>'+esc(v.date)+'</b> · <b>'+dh(v.montant)+'</b><br><span class="muted">'+esc(v.numero)+' · par '+esc(v.par||'')+'</span>'+(v.bordereau?' · '+linkTo(v.bordereau,'bordereau'):'')+'</div>';
+    }).join('')+'</div></div>';
+    view('Espèces en caisse', h);
+    if($('cv_ok')) $('cv_ok').onclick = function(){
+      guard(readFile($('cv_f')).then(function(f){
+        return api('caisse.depot', { montant:$('cv_m').value, date:$('cv_d').value, bordereau:f, commentaire:$('cv_c').value });
+      }).then(function(r){ go('caisse'); setTimeout(function(){ showErr('✓ Dépôt '+r.numero+' enregistré. Reste en caisse : '+dh(r.reste)+'.'); }, 400); }));
+    };
+  }));
+};
+</script>
+
+<script>
 // =====================================================================
 // Vue copropriétaire (lien ?r=… + code PIN) : son appartement, ses actions,
 // et les chiffres globaux de l'immeuble (jamais d'autre appartement)
@@ -1754,7 +1800,8 @@ function etapes(list){
   return '<div class="etapes">'+list.map(function(e){ return '<span class="'+(e[1]?'fait':'')+'">'+(e[1]?'✓ ':'○ ')+esc(e[0])+(e[1]&&e[1]!==true?' <small>'+esc(e[1])+'</small>':'')+'</span>'; }).join('')+'</div>';
 }
 /** Un résumé de l'état des envois, pour détecter « du nouveau » depuis la dernière visite (mémorisé sur ce téléphone). */
-function envoisEmpreinte(d){ return d.signalements.map(function(s){ return s.id+':'+s.statut; }).concat(d.demandes.map(function(s){ return s.id+':'+s.statut+':'+(s.reponse||'').length; })).join('|'); }
+function envoisEmpreinte(d){ return d.signalements.map(function(s){ return s.id+':'+s.statut; }).concat(d.demandes.map(function(s){ return s.id+':'+s.statut+':'+(s.reponse||'').length; }))
+  .concat((d.appartement.paiements||[]).map(function(p){ return 'P'+p.numero+':ok'; })).join('|'); }
 function envoisNouveautes(d){
   var key = 'syndic.envois.'+d.appartement.id, old = null;
   try { old = localStorage.getItem(key); localStorage.setItem(key, envoisEmpreinte(d)); } catch(e){ return []; }
@@ -1762,6 +1809,8 @@ function envoisNouveautes(d){
   var prev = {}; old.split('|').forEach(function(x){ var p=x.split(':'); prev[p[0]] = x; });
   var out = [];
   d.signalements.forEach(function(s){ var p = prev[s.id]; if(p && p !== s.id+':'+s.statut && s.statut!=='en attente') out.push('Votre paiement de '+dh(s.montant)+' : '+(s.statut==='validé'?'confirmé':'refusé')); });
+  var connaitP = /(^|\|)P/.test(old);   // anciens téléphones : on ne signale pas tout l'historique d'un coup
+  if(connaitP) (d.appartement.paiements||[]).forEach(function(p){ if(!prev['P'+p.numero]) out.push('Paiement de '+dh(p.montant)+' enregistré'+(p.mode?' ('+String(p.mode).toLowerCase()+')':'')+' – reçu n° '+p.numero+' dans « Mes documents »'); });
   d.demandes.forEach(function(s){ var p = prev[s.id]; if(p && p !== s.id+':'+s.statut+':'+(s.reponse||'').length) out.push('Votre demande « '+s.type+' » : '+(s.reponse?'le syndic a répondu':DEM_ST[s.statut]||s.statut)); });
   return out;
 }
